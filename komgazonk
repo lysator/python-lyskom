@@ -695,7 +695,7 @@ class Gazonk:
                     message = "Det är %s kvar till nästa ledtråd.\n\n" % \
                               format_hms(time_left,1)
                     message += "Nuvarande tidsintervall är %s.\n\n" % \
-                               format_times(self.current_time_interval,2)
+                               format_hms(self.current_time_interval,2)
                     nc_times_str = format_times(nc_times[1:], nc_times[0])
                     cl = self.current_clue + 2
                     for tstr in nc_times_str:

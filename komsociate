@@ -1,0 +1,337 @@
+#!/usr/bin/python
+# Take apart, and put together. Confuse and enlighten.
+# $Id: komsociate,v 1.1 2001/04/02 20:53:18 kent Exp $
+# (C) 2000, 2001 Kent Engström. Released under GPL.
+#
+
+import kom
+import komparam
+import komconfwalker
+
+# Check if these are all needed
+import sys
+import getopt
+import string
+import re
+import time
+import math
+import whrandom
+import os
+import cPickle
+import cStringIO
+import whrandom
+
+# Needs jddate from the lyspython collection
+import jddate
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error/sucess reporting
+exit_code = 0
+def error(str, code = 2, exit_now = 0):
+    global exit_code
+    exit_code = max(exit_code, code)
+    sys.stderr.write("ERROR: " + str + "\n")
+    if exit_now:
+        exit()
+        
+def success(str):
+    sys.stderr.write("OK: " + str + "\n")
+
+def exit():
+    sys.exit(exit_code)
+
+#
+# Split a text into lower case words (removing the subject line!)
+#
+
+upper2lower = string.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ",
+                               "abcdefghijklmnopqrstuvwxyzåäö")
+
+def split_text_into_words(text):
+    first_nl = string.find(text,"\n")
+    if first_nl <> -1:
+        text = text[first_nl+1:]
+    text = string.translate(text, upper2lower)
+
+    raw_words = string.split(text)
+
+    # Process the raw words, making punctuation standalone "words"
+    words = ["<SOT>"]
+    for word in raw_words:
+        m = re.match('^("*)(.*?)([".?!,;]*)$', word)
+        (before, main, after) = m.group(1,2,3)
+        if before <> "":
+            words.append(before)
+        words.append(main)
+        if after <> "":
+            words.append(after)
+
+    words.append("<EOT>")
+    return words
+
+def is_punctuation(word):
+    return re.match("^[^A-Za-zåäöÅÄÖ0-9]+$", word)    
+
+
+# CLASSES FOR RAMBLING
+
+class Dissociator:
+    def __init__(self, overlap = 2, continuation = 3):
+        self.overlap = overlap
+        self.continuation = continuation
+        self.dict = {}
+        self.words = []
+
+    def feed_word(self, word):
+        # Feed a word at a time, call feed at <EOT>
+        self.words.append(word)
+        if word == "<EOT>":
+            self.feed(self.words)
+            self.words = []
+
+    def feed(self, wordlist):
+        for i in range(0,len(wordlist) - self.overlap + 1):
+            key = tuple(wordlist[i:i+self.overlap])
+            rest = tuple(wordlist[i+self.overlap:
+                                  i+self.overlap+self.continuation])
+            if self.dict.has_key(key):
+                self.dict[key][rest]=1
+                #print key, "=",self.dict[key]
+            else:
+                self.dict[key] = {rest:1}
+                
+    def ramble(self):
+        words = self.choose_start()
+        pos = 0
+        while 1:
+            key = tuple(words[pos:pos+self.overlap])
+            if key == ("<EOT>",):
+                break
+            alts = self.dict[key].keys()
+            #if len(alts) > 1:
+                #print "CHOICEPOINT"
+                #for alt in alts:
+                #    print "  ", string.join(key, " "), \
+                #          "->", string.join(alt, " ")
+            alt  = whrandom.choice(alts)
+            words = words[:pos+self.overlap] + list(alt)
+            pos = pos + 1
+        return words[1:-1]
+
+    def choose_start(self):
+        # We need to seed the word list with a key that
+        # begins with the "<SOT>" pseudo-word.
+        alts = filter(lambda x: x[0] == "<SOT>", self.dict.keys())
+        return list(whrandom.choice(alts))
+
+
+class Formatter:
+    def __init__(self):
+        self.sio = cStringIO.StringIO()
+        self.column = 0
+        self.maxcol = 65
+        
+    def feed(self, wordlist):
+        # Merge punctuation into the words, fix capitalization
+        merged = []
+        capitalize = 1
+        for word in wordlist:
+            if is_punctuation(word) and len(merged)>0:
+                merged[-1] = merged[-1] + word
+                if word <> ",":
+                    capitalize = 1
+            elif capitalize:
+                merged.append(string.capitalize(word))
+                capitalize = 0
+            else:
+                merged.append(word)
+
+        # Do the formatting
+        for word in merged:
+            size = len(word) + 1
+            if self.column + size > self.maxcol:
+                # Wrap
+                self.sio.write("\n")
+                self.column = 0
+            self.sio.write(word + " ")
+            self.column = self.column + size
+
+        if self.column > 0:
+            self.sio.write("\n")
+            self.column = 0
+
+    def get(self):
+        return self.sio.getvalue()
+        
+
+#
+# CONFWORDS CLASS
+#
+# This is the real worker. An object of this class is used to read the
+# articles of the conference, gather the words, and dump them. The
+# walking logic has been isolated to a separate class, from which this
+# one inherits.
+
+class ConfWords(komconfwalker.ConfTemporalWalker):
+    def __init__(self, conn, person, conference, period,
+                 mark_earlier = 0, mark_processed = 0,
+                 exclude_self = 0,
+                 debug = 0,
+                 emit_function = None):
+        komconfwalker.ConfTemporalWalker.__init__(self, conn,
+                                                  person, conference, period,
+                                                  mark_earlier, mark_processed,
+                                                  debug)
+        
+        self.exclude_self = exclude_self
+        self.emit_function = emit_function
+        
+    def walk(self):
+        komconfwalker.ConfTemporalWalker.walk(self)
+
+    def process(self, loc_no, global_no, ts):
+        # Overrides the dummy method in ConfTemporalWalker
+
+        # Skip texts by myself
+        if self.exclude_self and ts.author == self.person:
+            return
+
+        text = kom.ReqGetText(self.conn, global_no, 0, 1024*1024).response()
+        for word in split_text_into_words(text):
+            self.emit_function(word)
+      
+
+# MAIN
+# Connect and log in
+# Notice: conn is a global variable used in a lot of places
+# FIXME: Yes, it's silly to have to log in to use --read-words. Muahahaha!
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, conn_error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], conn_error))
+    sys.exit(1)
+conn.enable_req_histo()
+
+#
+# CHECK FOR OPTIONS
+#
+
+conference = None
+period = komconfwalker.Period()
+mark_earlier = 0
+mark_processed = 0
+exclude_self = 0
+debug = 0
+
+MODE_BOTH = 0
+MODE_DUMP_WORDS = 1
+MODE_READ_WORDS = 2
+mode = MODE_BOTH
+
+texts = 10
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   ["conference=",
+                                    "today",
+                                    "yesterday",
+                                    "this-week",
+                                    "last-week",
+                                    "this-month",
+                                    "last-month",
+                                    "begin=",
+                                    "end=",
+                                    "mark-earlier", 
+                                    "mark-processed",
+                                    "exclude-self",
+                                    "debug",
+                                    "dump-words",
+                                    "read-words",
+                                    "texts=",
+                                    ])
+
+for (opt, optarg) in options:
+    if opt == "--conference":
+        matches = conn.lookup_name(optarg, 1, 1)
+        if len(matches) == 0:
+            error("%s -- conference not found" % optarg)
+        elif len(matches) <> 1:
+            error("%s -- ambiguous recipient" % optarg)
+        else:
+            conference = matches[0][0]
+    elif opt == "--today":
+        period.set_today()
+    elif opt == "--yesterday":
+        period.set_yesterday()
+    elif opt == "--this-week":
+        period.set_this_week()
+    elif opt == "--last-week":
+        period.set_last_week()
+    elif opt == "--this-month":
+        period.set_this_month()
+    elif opt == "--last-month":
+        period.set_last_month()
+    elif opt == "--begin":
+        period.set_begin(optarg)
+    elif opt == "--end":
+        period.set_end(optarg)
+    elif opt == "--mark-earlier":
+        mark_earlier = 1
+    elif opt == "--mark-processed":
+        mark_processed = 1
+    elif opt == "--exclude-self":
+        exclude_self = 1
+    elif opt == "--debug":
+        debug = 1
+    elif opt == "--dump-words":
+        mode = MODE_DUMP_WORDS
+    elif opt == "--read-words":
+        mode = MODE_READ_WORDS        
+    elif opt == "--texts":
+        texts = int(optarg)
+
+    else:
+        error("Option %s not handled (internal error)" % opt, exit_now = 1)
+
+if conference is None:
+    error("No conference given!", exit_now = 1)
+
+# For MODE_BOTH and MODE_DUMP_WORDS, we have to read the conference
+if mode in [MODE_BOTH, MODE_DUMP_WORDS]:
+    if mode == MODE_BOTH:
+        dissociator = Dissociator()
+        emit_function = dissociator.feed_word
+    else:
+        emit_function = lambda w: sys.stdout.write(w + "\n")
+
+    cstats = ConfWords(conn,
+                       param.get_person_no(), conference, period,
+                       mark_earlier = mark_earlier,
+                       mark_processed = mark_processed,
+                       exclude_self = exclude_self,
+                       debug = debug,
+                       emit_function = emit_function)
+    cstats.walk()
+
+# For MODE_READ_WORDS, we have to read the words from stdin
+if mode == MODE_READ_WORDS:
+    dissociator = Dissociator()
+    for word in map(string.strip, sys.stdin.readlines()):
+        dissociator.feed_word(word)
+
+# For MODE_BOTH and MODE_READ_WORDS, we have to produce lunacy
+if mode in [MODE_BOTH, MODE_READ_WORDS]:
+    for i in range(0,texts):
+        words = dissociator.ramble()
+        fm = Formatter()
+        fm.feed(words)
+        print fm.get()
+        print
+
+# Exit successfully
+exit()
+

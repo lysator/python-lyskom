@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.6 1999/07/14 15:29:48 kent Exp $
+# $Id: kom.py,v 1.7 1999/07/14 22:40:03 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -504,7 +504,7 @@ class ReqFindPreviousTextNo(Request):
 
 # login [62] (4) Recommended
 class ReqLogin(Request):
-    def __init__(self, c, person_no, password, invisible = 0):
+    def __init__(self, c, person_no, password, invisible = 1):
         self.register(c)
         c.send_string("%d 62 %d %dH%s %d\n" %
                       (self.id, person_no, len(password), password, invisible))
@@ -1835,9 +1835,8 @@ class Connection:
 # - Person
 # - TextStat 
 #
-# No negative caching.
-# No time-outs
-# Some automatic invalidation (if accept-async has been called appropriately)
+# No negative caching. No time-outs.
+# Some automatic invalidation (if accept-async has been called appropriately).
 
 class CachedConnection(Connection):
     def __init__(self, host, port = 4894, user = ""):
@@ -1855,7 +1854,7 @@ class CachedConnection(Connection):
         self.add_async_handler(ASYNC_SUB_RECIPIENT, self.cah_textstat)
         self.add_async_handler(ASYNC_DELETED_TEXT, self.cah_textstat)
 
-    # Fetching functions
+    # Fetching functions (internal use)
     def fetch_uconference(self, no):
         return ReqGetUconfStat(self, no).response()
 
@@ -1868,7 +1867,7 @@ class CachedConnection(Connection):
     def fetch_textstat(self, no):
         return ReqGetTextStat(self, no).response()
 
-    # Handlers for asynchronous messages
+    # Handlers for asynchronous messages (internal use)
     # (used to invalidate cache entries)
 
     def cah_conference(self, msg, c):
@@ -1878,6 +1877,16 @@ class CachedConnection(Connection):
     def cah_textstat(self, msg, c):
         self.textstats.invalidate(msg.text_no)
 
+    # Common operation: get name of conference (via uconference)
+    def conf_name(self, conf_no, default = ""):
+        try:
+            return self.uconferences[conf_no].name
+        except:
+            pass
+
+        return default
+
+# Cache class for use internally by CachedConnection
 class Cache:
     def __init__(self, fetcher):
         self.dict = {}

@@ -521,8 +521,9 @@ class Gazonk:
 
             if guess == self.password:
                 # Lägg till gissningen i lite gissningsdatabaser.
-                self.current_guesses.add(guess)
-                self.per_clue_guesses[self.current_clue].add(guess)
+                if GAZ_CORRECT_IN_END_MESSAGE == 1:
+                    self.current_guesses.add(guess)
+                    self.per_clue_guesses[self.current_clue].add(guess)
                 self.tstats.add_guess(guess, msg.sender, self, 1, self.current_clue+1)
 
                 self.password_history[0:0] = [self.password]
@@ -1025,8 +1026,15 @@ if GAZ_DISPLAY_STATISTICS != gaz.tstats.disp_stat or \
 conn.add_async_handler(kom.ASYNC_SEND_MESSAGE, gaz.parse_message)
 kom.ReqAcceptAsync(conn, [kom.ASYNC_SEND_MESSAGE]).response()
 
+msleep = MAX_SLEEP_TIME
 while 1:
-    select.select([conn.socket], [], [], MAX_SLEEP_TIME)
+    select.select([conn.socket], [], [], msleep)
+    msleep = MAX_SLEEP_TIME
+    if gaz.current_time >= 0.0:
+        ct = time.time()
+        if GAZ_SLEEP_HOURS.count(time.localtime().tm_hour) > 0:
+            gaz.time_last_action += ct - gaz.current_time
+            msleep = MAX_SLEEP_TIME_NIGHT
     gaz.set_current_time()
     conn.parse_present_data()
     gaz.check_clues()

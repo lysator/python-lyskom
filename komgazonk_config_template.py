@@ -55,4 +55,14 @@ GAZ_MAX_WARNINGS = 4
 # 5 - yearly
 GAZ_DISPLAY_STATISTICS = 4
 
+# Sleephours. These hours no new clues and no new warnings are sent.
+# I.e. it is like the clock doesn't go these hours.
+GAZ_SLEEP_HOURS = [0, 1, 2, 3, 4, 5, 6]
+
+# Max time sleeping during sleep hours (see MAX_SLEEP_TIME).
+MAX_SLEEP_TIME_NIGHT = 600
+
+# Set to 1 if correct guess should be showed in the end message of the round
+GAZ_CORRECT_IN_END_MESSAGE = 1
+
 # -- CONFIGURATION ENDS HERE ---

@@ -1,0 +1,342 @@
+#!/usr/bin/python
+# Collect some word statistics about a conference
+# $Id: komconfwords,v 1.1 2001/03/03 17:40:00 kent Exp $
+# (C) 2000, 2001 Kent Engström. Released under GPL.
+#
+
+import kom
+import komparam
+import komconfwalker
+
+# Check if these are all needed
+import sys
+import getopt
+import string
+import re
+import time
+import math
+import whrandom
+import os
+import cPickle
+import cStringIO
+
+# Needs jddate from the lyspython collection
+import jddate
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error/sucess reporting
+exit_code = 0
+def error(str, code = 2, exit_now = 0):
+    global exit_code
+    exit_code = max(exit_code, code)
+    sys.stderr.write("ERROR: " + str + "\n")
+    if exit_now:
+        exit()
+        
+def success(str):
+    sys.stderr.write("OK: " + str + "\n")
+
+def exit():
+    sys.exit(exit_code)
+
+#
+# Split a text into lower case words (removing the subject line!)
+#
+
+def split_text_into_words(text):
+    first_nl = string.find(text,"\n")
+    if first_nl <> -1:
+        text = text[first_nl+1:]
+    re_sanitize = re.compile("[^a-zåäö]+")
+
+    def mymap(w, r = re_sanitize):
+        return r.sub("", string.lower(w))
+
+    def myfilter(w):
+        return len(w)
+    
+    return filter(myfilter, map(mymap, string.split(text)))
+
+# Handle counts and nouns
+def get_count_with_noun(count, singularis, pluralis = None):
+    if pluralis is None or count == 1:
+        return "%d %s" % (count, singularis)
+    else:
+        return "%d %s" % (count, pluralis)
+
+
+#
+# CONFWORDS CLASS
+#
+# This is the real worker. An object of this class is used to read the
+# articles of the conference, gather the words, and process them. The
+# walking logic has been isolated to a separate class, from which this
+# one inherits.
+
+class ConfWords(komconfwalker.ConfTemporalWalker):
+    def __init__(self, conn, person, conference, period,
+                 mark_earlier = 0, mark_processed = 0,
+                 post_to_conference = 0,
+                 exclude_self = 0,
+                 debug = 0):
+        komconfwalker.ConfTemporalWalker.__init__(self, conn,
+                                                  person, conference, period,
+                                                  mark_earlier, mark_processed,
+                                                  debug)
+        
+        self.post_to_conference = post_to_conference
+        self.exclude_self = exclude_self
+
+        # Read dictionary of already seen words, no new words seen yet
+        self.save_file_name = "KOM-WORDS-%d-%d.pickle" % (self.conference,
+                                                          self.person)
+        try:
+            self.load_words()
+        except:
+            sys.stderr.write("Warning: word file %s not found, assuming empty one.\n" % \
+                             self.save_file_name)
+            self.words = {}
+
+        # We count old and new words, and later merge both back into self.words
+        self.no_of_words = 0
+        self.new_words = {}
+        self.no_of_new_words = 0
+        self.old_words = {}
+        self.no_of_old_words = 0
+
+    def walk(self):
+        komconfwalker.ConfTemporalWalker.walk(self)
+        # Afterwards, we should include the new words in the table of all words
+        self.words.update(self.new_words)
+
+    def process(self, loc_no, global_no, ts):
+        # Overrides the dummy method in ConfTemporalWalker
+
+        # Skip texts by myself
+        if self.exclude_self and ts.author == self.person:
+            return
+
+        text = kom.ReqGetText(self.conn, global_no, 0, 1024*1024).response()
+        for word in split_text_into_words(text):
+            self.no_of_words = self.no_of_words + 1
+            if self.words.has_key(word):
+                # An old word
+                self.no_of_old_words = self.no_of_old_words + 1
+                if self.old_words.has_key(word):
+                    # seen this run
+                    self.old_words[word] = self.old_words[word] + 1
+                else:
+                    # not seen this run
+                    self.old_words[word] = 1
+            else:
+                # A new word
+                self.no_of_new_words = self.no_of_new_words + 1
+                if self.new_words.has_key(word):
+                    # but we have seen it before this run
+                    self.new_words[word] = self.new_words[word] + 1
+                else:
+                    # A brave new word
+                    self.new_words[word] = 1
+      
+    def report(self):
+        # Report on everything
+        r = cStringIO.StringIO()
+        conf_name = self.conn.conf_name(self.conference)
+        title = "Ordrapport för %s" % conf_name
+
+        unique_new = len(self.new_words)
+        unique_old = len(self.old_words)
+        
+#        r.write("Vald period: %20s\n" % self.period.format())
+        r.write("Först inlägg: %19s\n" % \
+                time.strftime("%Y-%m-%d %H:%M:%S",
+                              time.localtime(self.first_created)))
+        r.write("Sista inlägg: %19s\n" % \
+                time.strftime("%Y-%m-%d %H:%M:%S",
+                              time.localtime(self.last_created)))
+        
+        r.write("\n")
+        r.write("Antal inlägg:               %5d\n" % self.no_of_articles)
+        r.write("Antal ord:                  %5d\n" % self.no_of_words)
+
+        r.write("\n")
+        r.write("Användningar av nya ord:    %5d\n" % self.no_of_new_words)
+        r.write("Antal unika nya ord:        %5d\n" % unique_new)
+
+        r.write("\n")
+        r.write("Användningar av gamla ord:  %5d\n" % self.no_of_old_words)
+        r.write("Antal unika gamla ord:      %5d\n" % unique_old)
+        
+        r.write("\n")
+        r.write("Topplista över nya ord\n")
+        r.write("----------------------\n")
+        r.write("\n")
+
+        sortlist = map(lambda x: (-x[1], x[0]), self.new_words.items())
+        sortlist.sort()
+        pos = 1
+        last_occ = None 
+        for (occ, word) in sortlist:
+            occ = - occ
+
+            if occ <> last_occ:
+                pos_str = str(pos)
+            else:
+                pos_str = '"'
+            r.write("%4s) %4d  %s\n" % (pos_str, occ, word))
+            pos = pos + 1
+            last_occ = occ
+            if pos > 50: break
+
+        r.write("\n")
+        
+        body = r.getvalue()
+        self.write_article(title, body)
+
+    def write_article(self, title, body, comment_to = None):
+        if self.post_to_conference:
+            misc_info = kom.CookedMiscInfo()
+
+            mir = kom.MIRecipient(kom.MIR_TO, self.conference)
+            misc_info.recipient_list.append(mir)
+            
+            if comment_to is not None:
+                mic = kom.MICommentTo(kom.MIC_COMMENT, comment_to)
+                misc_info.comment_to_list.append(mic)
+
+            aux_items = []
+            ai = kom.AuxItem(kom.AI_CREATING_SOFTWARE)
+            ai.data = "komconfwords %s" % revision
+            aux_items.append(ai)
+
+            text = title + "\n" + body
+            text_no = kom.ReqCreateText(conn, text,
+                                        misc_info, aux_items).response()
+            return text_no
+        
+        else:
+            print title
+            print "=" * len(title)
+            print
+            print body
+            print
+
+    def load_words(self):
+        f = open(self.save_file_name)
+        self.words = cPickle.load(f)
+        f.close()
+
+    def save_words(self):
+        f = open(self.save_file_name + ".new", "w")
+        cPickle.dump(self.words, f)
+        f.close()
+        os.rename(self.save_file_name + ".new", self.save_file_name)
+
+
+# MAIN
+# Connect and log in
+# Notice: conn is a global variable used in a lot of places
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, conn_error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], conn_error))
+    sys.exit(1)
+conn.enable_req_histo()
+
+#
+# CHECK FOR OPTIONS
+#
+
+conference = None
+period = komconfwalker.Period()
+mark_earlier = 0
+mark_processed = 0
+full_text = 0
+post_to_conference = 0
+exclude_self = 0
+debug = 0
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   ["conference=",
+                                    "today",
+                                    "yesterday",
+                                    "this-week",
+                                    "last-week",
+                                    "this-month",
+                                    "last-month",
+                                    "begin=",
+                                    "end=",
+                                    "mark-earlier", 
+                                    "mark-processed",
+                                    "post-to-conference",
+                                    "exclude-self",
+                                    "debug",
+                                    ])
+
+for (opt, optarg) in options:
+    if opt == "--conference":
+        matches = conn.lookup_name(optarg, 1, 1)
+        if len(matches) == 0:
+            error("%s -- conference not found" % optarg)
+        elif len(matches) <> 1:
+            error("%s -- ambiguous recipient" % optarg)
+        else:
+            conference = matches[0][0]
+    elif opt == "--today":
+        period.set_today()
+    elif opt == "--yesterday":
+        period.set_yesterday()
+    elif opt == "--this-week":
+        period.set_this_week()
+    elif opt == "--last-week":
+        period.set_last_week()
+    elif opt == "--this-month":
+        period.set_this_month()
+    elif opt == "--last-month":
+        period.set_last_month()
+    elif opt == "--begin":
+        period.set_begin(optarg)
+    elif opt == "--end":
+        period.set_end(optarg)
+    elif opt == "--mark-earlier":
+        mark_earlier = 1
+    elif opt == "--mark-processed":
+        mark_processed = 1
+    elif opt == "--post-to-conference":
+        post_to_conference = 1
+    elif opt == "--exclude-self":
+        exclude_self = 1
+    elif opt == "--debug":
+        debug = 1
+
+    else:
+        error("Option %s not handled (internal error)" % opt, exit_now = 1)
+
+if conference is None:
+    error("No conference given!", exit_now = 1)
+    
+cstats = ConfWords(conn,
+                   param.get_person_no(), conference, period,
+                   mark_earlier = mark_earlier,
+                   mark_processed = mark_processed,
+                   post_to_conference = post_to_conference,
+                   exclude_self = exclude_self,
+                   debug = debug)
+
+cstats.walk()
+cstats.report()
+cstats.save_words()
+
+# People that are curiosity-challenged will comment out the following
+# two lines:
+conn.report_cache_usage()
+conn.show_req_histo()
+
+# Exit successfully
+exit()
+

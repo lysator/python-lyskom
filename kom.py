@@ -1,5 +1,6 @@
-# LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.30 2002/09/26 18:27:09 kent Exp $
+# -*- coding: iso-8859-1 -*-
+# LysKOM Protocol A version 10/11 client interface for Python
+# $Id: kom.py,v 1.31 2003/08/27 21:08:54 kent Exp $
 # (C) 1999-2002 Kent Engström. Released under GPL.
 
 import socket
@@ -13,6 +14,8 @@ import select
 
 whitespace = " \t\r\n"
 digits = "01234567890"
+float_chars = digits + "eE.-+"
+
 ord_0 = ord("0")
 MAX_TEXT_SIZE = int(2**31L-1)
 
@@ -74,6 +77,13 @@ class InternalError(ServerError): pass # (51)
 class FeatureDisabled(ServerError): pass # (52)
 class MessageNotSent(ServerError): pass # (53)
 class InvalidMembershipType(ServerError): pass # (54)
+class InvalidRange(ServerError): pass # (55)
+class InvalidRangeList(ServerError): pass # (56)
+class UndefinedMeasurement(ServerError): pass # (57)
+class PriorityDenied(ServerError): pass # (58)
+class WeightDenied(ServerError): pass # (59)
+class WeightZero(ServerError): pass # (60)
+class BadBool(ServerError): pass # (61)
 
 # Mapping from Protocol A error_no to Python exception
 error_dict = {
@@ -130,6 +140,13 @@ error_dict = {
     52: FeatureDisabled,
     53: MessageNotSent,
     54: InvalidMembershipType,
+    55: InvalidRange,
+    56: InvalidRangeList,
+    57: UndefinedMeasurement,
+    58: PriorityDenied,
+    59: WeightDenied,
+    60: WeightZero,
+    61: BadBool,
     }
 
 # All local errors are subclasses of LocalError
@@ -834,19 +851,23 @@ class ReqSetExpire(Request):
         self.register(c)
         c.send_string("%d 97 %d %d\n" % (self.id, conf_no, expire))
 
-# query-read-texts [98] (10) Recommended
-class ReqQueryReadTexts(Request):
+# query-read-texts-10 [98] (10) Obsolete (11) Use query-read-texts (107)
+class ReqQueryReadTexts10(Request):
     def __init__(self, c, person_no, conf_no):
         self.register(c)
         c.send_string("%d 98 %d %d\n" % (self.id, person_no, conf_no))
 
     def parse_response(self):
-        # --> Membership
-        return self.c.parse_object(Membership)
+        # --> Membership10
+        return self.c.parse_object(Membership10)
 
+# The old version is the default version, in order not to
+# break backwards compatibility for existing users of kom.py
+ReqQueryReadTexts = ReqQueryReadTexts10
 
-# get-membership [99] (10) Recommended
-class ReqGetMembership(Request):
+# get-membership-10 [99] (10) Obsolete (11) Use get-membership (108)
+
+class ReqGetMembership10(Request):
     def __init__(self, c, person_no, first, no_of_confs, want_read_texts):
         self.register(c)
         c.send_string("%d 99 %d %d %d %d\n" % \
@@ -854,9 +875,12 @@ class ReqGetMembership(Request):
                        first, no_of_confs, want_read_texts))
 
     def parse_response(self):
-        # --> ARRAY Membership
-        # FIXME: Cannot read result when want_read_texts = 0
-        return self.c.parse_array(Membership)
+        # --> ARRAY Membership10
+        return self.c.parse_array(Membership10)
+
+# The old version is the default version, in order not to
+# break backwards compatibility for existing users of kom.py
+ReqGetMembership = ReqGetMembership10
 
 # add-member [100] (10) Recommended
 class ReqAddMember(Request):
@@ -906,7 +930,7 @@ class ReqMapCreatedTexts(Request):
         # --> Text-Mapping
         return self.c.parse_object(TextMapping)
 
-# set-keep-commented [105] (10) Experimental
+# set-keep-commented [105] (11) Recommended (10) Experimental
 class ReqSetKeepCommented(Request):
     def __init__(self, c, conf_no, keep_commented):
         self.register(c)
@@ -920,6 +944,178 @@ class ReqSetPersFlags(Request):
         c.send_string("%d 106 %d %s\n" % (self.id,
                                         person_no,
                                         flags.to_string()))
+
+### --- New in protocol version 11 ---
+
+# query-read-texts [107] (11) Recommended
+# The old version (no 98) is the default version, in order not to
+# break backwards compatibility for existing users of kom.py
+class ReqQueryReadTexts11(Request):
+    def __init__(self, c, person_no, conf_no,
+                 want_read_ranges, max_ranges):
+        self.register(c)
+        c.send_string("%d 107 %d %d %d %d\n" % (self.id, person_no, conf_no,
+                                                want_read_ranges,
+                                                max_ranges))
+
+    def parse_response(self):
+        # --> Membership11
+        return self.c.parse_object(Membership11)
+
+# get-membership [108] (11) Recommended
+# The old version (no 99) is the default version, in order not to
+# break backwards compatibility for existing users of kom.py
+class ReqGetMembership11(Request):
+    def __init__(self, c, person_no, first, no_of_confs,
+                 want_read_ranges, max_ranges):
+        self.register(c)
+        c.send_string("%d 108 %d %d %d %d %d\n" % \
+                      (self.id, person_no,
+                       first, no_of_confs,
+                       want_read_ranges, max_ranges))
+
+    def parse_response(self):
+        # --> ARRAY Membership11
+        return self.c.parse_array(Membership11)
+
+# mark-as-unread [109] (11) Recommended
+class ReqMarkAsUnread(Request):
+    def __init__(self, c, conf_no, text_no):
+        self.register(c)
+        c.send_string("%d 109 %d %d\n" %
+                      (self.id,
+                       conf_no,
+                       text_no))
+
+# set-read-ranges [110] (11) Recommended
+class ReqSetReadRanges(Request):
+    def __init__(self, c, conf_no, read_ranges):
+        self.register(c)
+        c.send_string("%d 110 %s %s\n" %
+                      (self.id,
+                       conf_no,
+                       c.array_to_string(read_ranges)))
+
+# get-stats-description [111] (11) Recommended
+class ReqGetStatsDescription(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 111 \n" % (self.id))
+
+    def parse_response(self):
+        # --> Stats-Description
+        return self.c.parse_object(StatsDescription)
+
+# get-stats [112] (11) Recommended
+class ReqGetStats(Request):
+    def __init__(self, c, what):
+        self.register(c)
+        c.send_string("%d 112 %dH%s\n" % (self.id,
+                                          len(what), what))
+
+    def parse_response(self):
+        # --> ARRAY Stats
+        return self.c.parse_array(Stats)
+
+# get-boottime-info [113] (11) Recommended
+class ReqGetBoottimeInfo(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 113 \n" % (self.id))
+
+    def parse_response(self):
+        # --> Static-Server-Info
+        return self.c.parse_object(StaticServerInfo)
+
+# first-unused-conf-no [114] (11) Recommended
+class ReqFirstUnusedConfNo(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 114\n" % (self.id))
+
+    def parse_response(self):
+        # --> Conf-No
+        return self.c.parse_int()
+
+# first-unused-text-no [115] (11) Recommended
+class ReqFirstUnusedTextNo(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 115\n" % (self.id))
+
+    def parse_response(self):
+        # --> Text-No
+        return self.c.parse_int()
+
+# find-next-conf-no [116] (11) Recommended
+class ReqFindNextConfNo(Request):
+    def __init__(self, c, conf_no):
+        self.register(c)
+        c.send_string("%d 116 %d\n" % (self.id, conf_no))
+
+    def parse_response(self):
+        # --> Conf-No
+        return self.c.parse_int()
+
+# find-previous-conf-no [117] (11) Recommended
+class ReqFindPreviousConfNo(Request):
+    def __init__(self, c, conf_no):
+        self.register(c)
+        c.send_string("%d 117 %d\n" % (self.id, conf_no))
+
+    def parse_response(self):
+        # --> Conf-No
+        return self.c.parse_int()
+
+# get-scheduling [118] (11) Experimental
+class ReqGetScheduling(Request):
+    def __init__(self, c, session_no):
+        self.register(c)
+        c.send_string("%d 118 %d\n" % (self.id, session_no))
+
+    def parse_response(self):
+        # --> SchedulingInfo
+        return self.c.parse_object(SchedulingInfo)
+
+# set-scheduling [119] (11) Experimental
+class ReqSetScheduling(Request):
+    def __init__(self, c, session_no, priority, weight):
+        self.register(c)
+        c.send_string("%d 119 %d %d %d\n" % (self.id, session_no,
+                                             priority, weight))
+
+# set-connection-time-format [120] (11) Recommended
+class ReqSetConnectionTimeFormat(Request):
+    def __init__(self, c, use_utc):
+        self.register(c)
+        c.send_string("%d 120 %d\n" %
+                      (self.id,
+                       use_utc))
+
+# local-to-global-reverse [121] (11) Recommended
+class ReqLocalToGlobalReverse(Request):
+    def __init__(self, c, conf_no, local_no_ceiling, no_of_existing_texts):
+        self.register(c)
+        c.send_string("%d 121 %d %d %d\n" % \
+                      (self.id, conf_no, local_no_ceiling,
+                       no_of_existing_texts))
+
+    def parse_response(self):
+        # --> Text-Mapping
+        return self.c.parse_object(TextMapping)
+
+# map-created-texts-reverse [122] (11) Recommended
+class ReqMapCreatedTextsReverse(Request):
+    def __init__(self, c, author, local_no_ceiling, no_of_existing_texts):
+        self.register(c)
+        c.send_string("%d 122 %d %d %d\n" % \
+                      (self.id, author, local_no_ceiling,
+                       no_of_existing_texts))
+
+    def parse_response(self):
+        # --> Text-Mapping
+        return self.c.parse_object(TextMapping)
+
 
 #
 # Classes for asynchronous messages from the server are all
@@ -1032,6 +1228,38 @@ class AsyncNewMembership(AsyncMessage):
         self.person_no = c.parse_int()
         self.conf_no = c.parse_int()
 
+# async-new-user-area [19] (11) Recommended
+ASYNC_NEW_USER_AREA = 19
+class AsyncNewUserArea(AsyncMessage):
+    def parse(self, c):
+        self.person_no = c.parse_int()
+        self.old_user_area = c.parse_int()
+        self.new_user_area = c.parse_int()
+
+# async-new-presentation [20] (11) Recommended
+ASYNC_NEW_PRESENTATION = 20
+class AsyncNewPresentation(AsyncMessage):
+    def parse(self, c):
+        self.conf_no = c.parse_int()
+        self.old_presentation = c.parse_int()
+        self.new_presentation = c.parse_int()
+
+# async-new-motd [21] (11) Recommended
+ASYNC_NEW_MOTD = 21
+class AsyncNewMotd(AsyncMessage):
+    def parse(self, c):
+        self.conf_no = c.parse_int()
+        self.old_motd = c.parse_int()
+        self.new_motd = c.parse_int()
+
+# async-text-aux-changed [22] (11) Recommended
+ASYNC_TEXT_AUX_CHANGED = 22
+class AsyncTextAuxChanged(AsyncMessage):
+    def parse(self, c):
+        self.text_no = c.parse_int()
+        self.deleted = c.parse_array(AuxItem)
+        self.added = c.parse_array(AuxItem)
+
 async_dict = {
     ASYNC_NEW_TEXT_OLD: AsyncNewTextOld,
     ASYNC_NEW_NAME: AsyncNewName,
@@ -1046,7 +1274,11 @@ async_dict = {
     ASYNC_NEW_TEXT: AsyncNewText,
     ASYNC_NEW_RECIPIENT: AsyncNewRecipient,
     ASYNC_SUB_RECIPIENT: AsyncSubRecipient,
-    ASYNC_NEW_MEMBERSHIP: AsyncNewMembership
+    ASYNC_NEW_MEMBERSHIP: AsyncNewMembership,
+    ASYNC_NEW_USER_AREA: AsyncNewUserArea,
+    ASYNC_NEW_PRESENTATION: AsyncNewPresentation,
+    ASYNC_NEW_MOTD: AsyncNewMotd,
+    ASYNC_TEXT_AUX_CHANGED: AsyncTextAuxChanged,
     }
 
 #
@@ -1527,7 +1759,7 @@ class MembershipType:
         self.invitation = 0
         self.passive = 0
         self.secret = 0
-        self.reserved1 = 0
+        self.passive_message_invert = 0
         self.reserved2 = 0
         self.reserved3 = 0
         self.reserved4 = 0
@@ -1537,7 +1769,7 @@ class MembershipType:
         (self.invitation,
          self.passive,
          self.secret,
-         self.reserved1,
+         self.passive_message_invert,
          self.reserved2,
          self.reserved3,
          self.reserved4,
@@ -1548,13 +1780,13 @@ class MembershipType:
                (self.invitation,
                 self.passive,
                 self.secret,
-                self.reserved1,
+                self.passive_message_invert,
                 self.reserved2,
                 self.reserved3,
                 self.reserved4,
                 self.reserved5)
 
-class Membership:
+class Membership10:
     def parse(self, c):
         self.position = c.parse_int()
         self.last_time_read  = c.parse_object(Time)
@@ -1562,6 +1794,38 @@ class Membership:
         self.priority = c.parse_int()
         self.last_text_read = c.parse_int()
         self.read_texts = c.parse_array_of_int()
+        self.added_by = c.parse_int()
+        self.added_at = c.parse_object(Time)
+        self.type = c.parse_object(MembershipType)
+
+# The old version is the default version, in order not to
+# break backwards compatibility for existing users of kom.py
+Membership = Membership10
+
+class ReadRange:
+    def __init__(self, first_read = 0, last_read = 0):
+        self.first_read = first_read
+        self.last_read = last_read
+        
+    def parse(self, c):
+        self.first_read = c.parse_int()
+        self.last_read = c.parse_int()
+
+    def __repr__(self):
+        return "<ReadRange %d-%d>" % (self.first_read, self.last_read)
+
+    def to_string(self):
+        return "%d %d" % \
+               (self.first_read,
+                self.last_read)
+    
+class Membership11:
+    def parse(self, c):
+        self.position = c.parse_int()
+        self.last_time_read  = c.parse_object(Time)
+        self.conference = c.parse_int()
+        self.priority = c.parse_int()
+        self.read_ranges = c.parse_array(ReadRange)
         self.added_by = c.parse_int()
         self.added_at = c.parse_object(Time)
         self.type = c.parse_object(MembershipType)
@@ -1680,6 +1944,21 @@ class VersionInfo:
                (self.protocol_version,
                 self.server_software, self.software_version)
 
+# New in protocol version 11
+class StaticServerInfo: 
+    def parse(self, c):
+        self.boot_time = c.parse_object(Time)
+        self.save_time = c.parse_object(Time)
+        self.db_status = c.parse_string()
+        self.existing_texts = c.parse_int()
+        self.highest_text_no = c.parse_int()
+        self.existing_confs = c.parse_int()
+        self.existing_persons = c.parse_int()
+        self.highest_conf_no = c.parse_int()
+
+    def __repr__(self):
+        return "<StaticServerInfo>"
+
 # SESSION INFORMATION
 
 class SessionFlags:
@@ -1708,7 +1987,12 @@ class StaticSessionInfo:
         self.hostname = c.parse_string()
         self.ident_user = c.parse_string()
         self.connection_time = c.parse_object(Time)
-     
+
+class SchedulingInfo:
+    def parse(self, c):
+        self.priority = c.parse_int()
+        self.weight = c.parse_int()
+
 class WhoInfo:
     def parse(self, c):
         self.person = c.parse_int()
@@ -1717,6 +2001,27 @@ class WhoInfo:
         self.what_am_i_doing  = c.parse_string()
         self.username = c.parse_string()
      
+# STATISTICS
+
+class StatsDescription:
+    def parse(self, c):
+        self.what = c.parse_array_of_string()
+        self.when = c.parse_array_of_int()
+     
+    def __repr__(self):
+        return "<StatsDescription>"
+
+class Stats:
+    def parse(self, c):
+        self.average = c.parse_float()
+        self.ascent_rate = c.parse_float()
+        self.descent_rate = c.parse_float()
+
+    def __repr__(self):
+        return "<Stats %f + %f -%f>" % (self.average,
+                                        self.ascent_rate,
+                                        self.descent_rate)
+
 #
 # CLASS for a connection
 #
@@ -1879,7 +2184,7 @@ class Connection:
         obj = classname()
         obj.parse(self)
         return obj
-        
+
     def parse_old_object(self, classname):
         obj = classname()
         obj.parse(self, old_format=1)
@@ -1892,7 +2197,10 @@ class Connection:
         res = []
         if len > 0:
             left = self.parse_first_non_ws()
-            if left <> "{": raise ProtocolError
+            if left == "*":
+                # Special case of unwanted data
+                return []
+            elif left <> "{": raise ProtocolError
             for i in range(0, len):
                 obj = element_class()
                 obj.parse(self)
@@ -1910,14 +2218,17 @@ class Connection:
                                               array),
                                           " "))
                              
-    def parse_array_of_int(self):
+    def parse_array_of_basictype(self, basic_type_parser):
         len = self.parse_int()
         res = []
         if len > 0:
             left = self.parse_first_non_ws()
-            if left <> "{": raise ProtocolError
+            if left == "*":
+                # Special case of unwanted data
+                return []
+            elif left <> "{": raise ProtocolError
             for i in range(0, len):
-                res.append(self.parse_int())
+                res.append(basic_type_parser())
             right = self.parse_first_non_ws()
             if right <> "}": raise ProtocolError
         else:
@@ -1925,10 +2236,16 @@ class Connection:
             if star <> "*": raise ProtocolError
         return res
 
+    def parse_array_of_int(self):
+        return self.parse_array_of_basictype(self.parse_int)
+
     def array_of_int_to_string(self, array):
         return "%d { %s }" % (len(array),
                              string.join(map(str, array), " "))
                              
+    def parse_array_of_string(self):
+        return self.parse_array_of_basictype(self.parse_string)
+
     # PARSING BITSTRINGS
     def parse_bitstring(self, len):
         res = []
@@ -1966,6 +2283,15 @@ class Connection:
         (c, n) = self.parse_int_and_next()
         return c
 
+    # Get a float from the receive buffer (discard next character)
+    def parse_float(self):
+        c = self.parse_first_non_ws()
+        digs = []
+        while c in float_chars:
+            digs.append(c)
+            c = self.receive_char()
+        return float("".join(digs))
+    
     # Parse a string (Hollerith notation)
     def parse_string(self):
         (len, h) = self.parse_int_and_next()
@@ -2168,7 +2494,8 @@ class CachedConnection(Connection):
 
     def get_unread_texts(self, person_no, conf_no):
         unread = []
-        ms = ReqQueryReadTexts(self, person_no, conf_no).response()
+        # FIXME: Should use protocol version 11 where applicable
+        ms = ReqQueryReadTexts10(self, person_no, conf_no).response()
 
         # Start asking for translations
         ask_for = ms.last_text_read + 1
@@ -2228,7 +2555,8 @@ class CachedUserConnection(CachedConnection):
             return 1
         
     def fetch_membership(self, no):
-        return ReqQueryReadTexts(self, self._user_no, no).response()
+        # FIXME: Investigate switch to protocol version 11?
+        return ReqQueryReadTexts10(self, self._user_no, no).response()
     
     # NOTE: No more than 500 unread texts are examined
     def fetch_unread(self, no):

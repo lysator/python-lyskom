@@ -1,6 +1,6 @@
 # -*- coding: iso-8859-1 -*-
 # LysKOM Protocol A version 10/11 client interface for Python
-# $Id: kom.py,v 1.36 2003/12/25 20:05:28 astrand Exp $
+# $Id: kom.py,v 1.37 2003/12/26 21:51:50 astrand Exp $
 # (C) 1999-2002 Kent Engström. Released under GPL.
 
 import socket
@@ -2108,7 +2108,17 @@ class Connection:
     # Parse all present data
     def parse_present_data(self):
         while select.select([self.socket], [], [], 0)[0]:
-            self.parse_server_message()
+            ch = self.receive_char()
+            if ch in whitespace:
+                continue
+            if ch == "=":
+                self.parse_response()
+            elif ch == "%":
+                self.parse_error()
+            elif ch == ":":
+                self.parse_asynchronous_message()
+            else:
+                raise ProtocolError
             
     # Enable request histogram
     def enable_req_histo(self):

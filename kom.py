@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.17 2001/01/13 00:07:54 kent Exp $
+# $Id: kom.py,v 1.18 2001/01/24 17:53:23 astrand Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -2148,8 +2148,8 @@ class CachedConnection(Connection):
                 for tuple in mapping.list:
                     if tuple[0] not in ms.read_texts:
                         unread.append(tuple)
-                        ask_for = mapping.range_end
-                        more_to_fetch = mapping.later_texts_exists
+                ask_for = mapping.range_end
+                more_to_fetch = mapping.later_texts_exists
             except NoSuchLocalText:
                 # No unread texts
                 more_to_fetch = 0

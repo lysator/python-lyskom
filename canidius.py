@@ -76,7 +76,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.4 2004/12/03 13:19:18 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.5 2004/12/03 14:38:33 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -185,30 +185,29 @@ def parse_configmessage(text, report=0):
             'startup_show':'',
             'startup_status':''}
     
-    if -1 != tl[0].lower().find("jabberconfig"): # Configuration letter
-        for p in tl:
-            if len(p) and p[0] != '#':
-                treated = 0
+    for p in tl:
+        if len(p) and p[0] != '#':
+            treated = 0
 
-                for q in ('server','userid','password','alias','resource',
-                          'port','skip_resources''ignore','ignore_presence',
-                          'sendpresence','startup_show','startup_status',
-                          'divert_incoming_to'):
-                    l = filter(None, p.lower().split())
-                    if l and l[0] == q:
-                        if q == 'alias':
-                            origcasel = filter(None, p.split())
-                            conf['aliases'].append((origcasel[1],origcasel[2]))
-                            treated = 1
-                        elif q in ('ignore','ignore_presence','sendpresence'):
-                            for r in l[1:]:
-                                conf[q].append(r)
-                        else:
-                            conf[q] = l[1]
-                            treated = 1
+            for q in ('server','userid','password','alias','resource',
+                      'port','skip_resources''ignore','ignore_presence',
+                      'sendpresence','startup_show','startup_status',
+                      'divert_incoming_to'):
+                l = filter(None, p.lower().split())
+                if l and l[0] == q:
+                    if q == 'alias':
+                        origcasel = filter(None, p.split())
+                        conf['aliases'].append((origcasel[1],origcasel[2]))
+                        treated = 1
+                    elif q in ('ignore','ignore_presence','sendpresence'):
+                        for r in l[1:]:
+                            conf[q].append(r)
+                    else:
+                        conf[q] = l[1]
+                        treated = 1
 
-                if not treated:
-                    nounderstand.append(p)
+            if not treated:
+                nounderstand.append(p)
 
     if nounderstand and report:
         pass # TODO

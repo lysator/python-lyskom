@@ -1,0 +1,302 @@
+#!/usr/bin/env python
+# Show conference activity in a tabular manner
+# (large parts ripped from komconfstats)
+# $Id: komconfactivity,v 1.1 2002/07/24 20:08:43 kent Exp $
+# (C) 2000-2002 Kent Engström. Released under GPL.
+
+# Need a modern Python (2.2 will do)
+
+import kom
+import komparam
+import komconfwalker
+import sys
+import getopt
+import re
+
+import cStringIO
+
+import jddate # From the lyspython collection
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error/sucess reporting
+exit_code = 0
+def error(str, code = 2, exit_now = 0):
+    global exit_code
+    exit_code = max(exit_code, code)
+    sys.stderr.write("ERROR: " + str + "\n")
+    if exit_now:
+        exit()
+        
+def success(str):
+    sys.stderr.write("OK: " + str + "\n")
+
+def exit():
+    sys.exit(exit_code)
+
+
+#
+# ConfActivity Class
+
+class ConfActivity(komconfwalker.ConfTemporalWalker):
+    def __init__(self, conn, person, conference, period,
+                 mark_earlier = 0, mark_processed = 0,
+                 post_to_conference = 0,
+                 exclude_self = 0,
+                 debug = 0):
+        komconfwalker.ConfTemporalWalker.__init__(self, conn,
+                                                  person, conference, period,
+                                                  mark_earlier, mark_processed,
+                                                  debug)
+        
+        self.post_to_conference = post_to_conference
+        self.exclude_self = exclude_self
+
+        # We need to count articles per author, day and hour (the purpose of this hack!)
+        self.count = {} # indexed by person number, date, hour (0..23)
+        
+        # We need to count articles per author to sort when displaying
+        self.author_count = {} # indexed by person number
+
+        # We also need (date, hour) of first and last article counted
+        self.first = None
+        self.last  = None 
+                
+    def gather(self):
+        # Learn the members of the conference
+        # FIXME: What maximum number should be used?
+        self.members = map(lambda x: x.member,
+                           kom.ReqGetMembers(self.conn,
+                                             self.conference,
+                                             0, 16384).response())
+        
+        # Traverse the texts.
+        self.walk()
+
+        # That's it. The reporting is done in a separate method.
+
+
+    def process(self, loc_no, global_no, ts):
+        # Overrides the dummy method in ConfTemporalWalker
+
+        # Skip texts by myself
+        if self.exclude_self and ts.author == self.person:
+            return
+
+        # Date (string YYYYMMDD) and hour (integer 0..23), combined as tuple
+        t_date = "%04d-%02d-%02d" % (ts.creation_time.year + 1900,
+                                     ts.creation_time.month +1,
+                                     ts.creation_time.day)
+        t_hour = ts.creation_time.hours
+        t_tuple = (t_date, t_hour)
+        
+        # First and last date/hour
+        if self.first is None or self.first > t_tuple:
+            self.first = t_tuple
+        if self.last is None or self.last < t_tuple:
+            self.last = t_tuple
+
+        # Author total
+        self.author_count[ts.author] = self.author_count.get(ts.author, 0) + 1
+
+        # The Count <tm>
+        index = (ts.author, t_date, t_hour)
+        self.count[index] = self.count.get(index, 0) + 1
+        
+
+    def report(self):
+        c = cStringIO.StringIO()
+
+        # We need a list of authors sorted by no of articles (most first)
+        # Also, limit to top twenty
+        sortlist = [(-self.author_count[author], author) \
+                    for author in self.author_count]
+        sortlist.sort()
+        authors = [x[1] for x in sortlist][:20]
+
+        # We now need names and a short tag for all authors
+        name_dict = {}
+        tag_dict = {}
+        for author in authors:
+            name = conn.conf_name(author)
+            name_dict[author] = name
+            tag_dict[author] = (name + "XX")[0:2].lower() # FIXME: Need better
+
+
+        # Present a legend at the top
+        c.write("Följande personer har varit aktiva under perioden (max 20):\n\n")
+        for author in authors:
+            c.write("%-2s = %s (%d)\n" % (tag_dict[author],
+                                          name_dict[author],
+                                          self.author_count[author]))
+        #c.write("\n   " + " ".join([tag_dict[a] for a in authors]) + "\n\n")
+        c.write("\n")
+        c.write("Signatur visas under en timme då personen skrivit inlägg.\n")
+        c.write("Stora bokstäver betyder tjugo eller fler inlägg.\n")
+        
+        # Loop over the dates
+        d_first = jddate.FromString(self.first[0])
+        h_first = self.first[1]
+        d_last = jddate.FromString(self.last[0])
+        h_last = self.last[1]
+
+        d = d_first
+        while d <= d_last:
+            date = d.GetString_YYYY_MM_DD()
+            c.write("\n" + date + ":\n")
+
+            # Loop over the hours
+            for h in range(0,24):
+                # Skip before first and after last:
+                if (d == d_first and h < h_first) or \
+                   (d == d_last and h > h_last):
+                    continue
+                c.write("%02d " % h)
+
+                # Loop over the authors
+                for a in authors:
+                    count = self.count.get((a, date, h), 0)
+                    if count >= 20:
+                        txt = tag_dict[a].upper()
+                    elif count > 0:
+                        txt = tag_dict[a]
+                    else:
+                        txt = "__"
+                    c.write(txt + " ")
+                
+                c.write("\n")
+
+            # Next day
+            d = d + 1
+        
+        self.write_article("Aktivitetsrapport",
+                           c.getvalue())
+    
+    def write_article(self, title, body, comment_to = None):
+        if self.post_to_conference:
+            misc_info = kom.CookedMiscInfo()
+
+            mir = kom.MIRecipient(kom.MIR_TO, self.conference)
+            misc_info.recipient_list.append(mir)
+            
+            if comment_to is not None:
+                mic = kom.MICommentTo(kom.MIC_COMMENT, comment_to)
+                misc_info.comment_to_list.append(mic)
+
+            aux_items = []
+            ai = kom.AuxItem(kom.AI_CREATING_SOFTWARE)
+            ai.data = "komconfactivity %s" % revision
+            aux_items.append(ai)
+
+            text = title + "\n" + body
+            text_no = kom.ReqCreateText(conn, text,
+                                        misc_info, aux_items).response()
+            return text_no
+        
+        else:
+            print title
+            print "=" * len(title)
+            print
+            print body
+            print
+
+# MAIN
+# Connect and log in
+# Notice: conn is a global variable used in a lot of places
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, conn_error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], conn_error))
+    sys.exit(1)
+conn.enable_req_histo()
+
+#
+# CHECK FOR OPTIONS
+#
+
+conference = None
+period = komconfwalker.Period()
+mark_earlier = 0
+mark_processed = 0
+post_to_conference = 0
+exclude_self = 0
+debug = 0
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   ["conference=",
+                                    "today",
+                                    "yesterday",
+                                    "this-week",
+                                    "last-week",
+                                    "this-month",
+                                    "last-month",
+                                    "begin=",
+                                    "end=",
+                                    "mark-earlier", 
+                                    "mark-processed",
+                                    "full-text",
+                                    "post-to-conference",
+                                    "exclude-self",
+                                    "debug",
+                                    ])
+
+for (opt, optarg) in options:
+    if opt == "--conference":
+        matches = conn.lookup_name(optarg, 1, 1)
+        if len(matches) == 0:
+            error("%s -- conference not found" % optarg)
+        elif len(matches) <> 1:
+            error("%s -- ambiguous recipient" % optarg)
+        else:
+            conference = matches[0][0]
+    elif opt == "--today":
+        period.set_today()
+    elif opt == "--yesterday":
+        period.set_yesterday()
+    elif opt == "--this-week":
+        period.set_this_week()
+    elif opt == "--last-week":
+        period.set_last_week()
+    elif opt == "--this-month":
+        period.set_this_month()
+    elif opt == "--last-month":
+        period.set_last_month()
+    elif opt == "--begin":
+        period.set_begin(optarg)
+    elif opt == "--end":
+        period.set_end(optarg)
+    elif opt == "--mark-earlier":
+        mark_earlier = 1
+    elif opt == "--mark-processed":
+        mark_processed = 1
+    elif opt == "--post-to-conference":
+        post_to_conference = 1
+    elif opt == "--exclude-self":
+        exclude_self = 1
+    elif opt == "--debug":
+        debug = 1
+
+    else:
+        error("Option %s not handled (internal error)" % opt, exit_now = 1)
+
+if conference is None:
+    error("No conference given!", exit_now = 1)
+    
+cstats = ConfActivity(conn,
+                      param.get_person_no(), conference, period,
+                      mark_earlier = mark_earlier,
+                      mark_processed = mark_processed,
+                      post_to_conference = post_to_conference,
+                      exclude_self = exclude_self,
+                      debug = debug)
+
+cstats.gather()
+cstats.report()
+
+# Exit successfully
+exit()
+

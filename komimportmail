@@ -1,6 +1,6 @@
 #!/usr/bin/python-1.5.2
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.7 1999/07/23 18:20:38 kent Exp $
+# $Id: komimportmail,v 1.8 1999/07/25 14:40:25 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -14,186 +14,264 @@ import rfc822
 import rfc1522
 import lockingshelve
 import kom
+import os
 
-# Configuration
+# -- CONFIGURATION BEGINS HERE ---
 
+# How to connect to the server
 KOMSERVER = "localhost"
 KOMPORT = 4894
 KOMPERSON = 21
 KOMPASSSWORD = "eppelpost"
 
-LOGFILE = "/home/kent/lyskom/python-lyskom/maillog"
+# File to log some information into
+LOG_FILE = "/home/kent/lyskom/python-lyskom/maillog"
+
+# File for message-id -> text-no database
+# Note: the actual filename depends on what database shelve.py chooses.
 ID_DB_FILE = "/home/kent/lyskom/python-lyskom/message-id"
 
-APPENDIX_TEXT_NONAME = "Bilaga till: "
-APPENDIX_TEXT = "Bilaga (%s) till: "
+# Text to prepend to subject header of appendices
+APPENDIX_SUBJECT_PREFIX_NONAME = "Bilaga till: "
+APPENDIX_SUBJECT_PREFIX = "Bilaga (%s) till: "
 
-APPENDIX_COMMENT_TYPE = kom.MIC_COMMENT
-#APPENDIX_COMMENT_TYPE = kom.MIC_FOOTNOTE
+# Use comments or footnotes when linking appendices to the main article?
+APPENDIX_COMMENT_TYPE = kom.MIC_COMMENT #or kom.MIC_FOOTNOTE
+
+# -- CONFIGURATION ENDS HERE ---
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.7 $"
+vc_revision = "$Revision: 1.8 $"
 revision = vc_revision[11:-2]
 
-# Error reporting
+# Error reporting to stderr and logfile
 def fatal(str):
-    sys.stderr.write("ERROR: " + str + "\n")
+    line = "FATAL: " + str
+    sys.stderr.write(line + "\n")
+    log(line)
     sys.exit(1)
 
-# Send a text (subject, body, Misc-Info and Aux-Items) to KOM.
-# Destructively prune comment-to/footnote-to Misc-Info items
-# if they seem to cause problems.
-# Return text_no or throw exception.
-def send_to_kom(subject, body, misc_info, aux_items):
-    attempting_to_send = 1
-    while attempting_to_send:
-        try:
-            text_no = kom.ReqCreateText(c,
-                                        subject + "\n" + body,
-                                        misc_info, aux_items).response()
-            attempting_to_send = 0
-        except kom.NoSuchText, error_status:
-            # We assume this is because of a bad Comment-To link
-            # (perhaps the text we are trying to comment has been
-            # deleted). Remove the offending Misc-Info entry and
-            # try again, if possible.
-            attempting_to_send = 0
-            try:
-                bad_text_no = string.atoi(str(error_status))
-                for i in range(0,len(misc_info.comment_to_list)):
-                    if misc_info.comment_to_list[i].text_no == bad_text_no:
-                        del misc_info.comment_to_list[i]
-                        attempting_to_send = 1
-                        break
-            except:
-                # If we fail to remove the offending Misc-Info item,
-                # we raise an exception
-                raise kom.NoSuchText, bad_text_no # hope it was set
+# Logging
 
-    return text_no
+log_file = None
+log_pid = None
+def log(line):
+    global log_file
+    global log_pid
+    
+    if log_file is None:
+        log_file = open(LOG_FILE, "a")
 
-# Handle email (decode and send to KOM) 
-# Note: parent = None means that this is the top node (first message part)
-#       parent = text_no means that this is a subnode (subsequent part)
+    if log_pid is None:
+        log_pid = os.getpid()
+        
+    log_file.write("%d: %s\n" % (log_pid, line))
 
-def create_article(envelope_sender,
-                   envelope_recipients,
-                   mail_headers,
-                   part_headers,
-                   body,
-                   parent = None):
-
-    # Open threading database of ID:s
+# Create an article or add recipients to an existing one
+def create_article_or_add_recipients(mail,
+                                     envelope_sender,
+                                     envelope_recipients):
+    # Get Message-ID
     try:
-        id_db = lockingshelve.LockingShelve(ID_DB_FILE)
+        message_id = mail.headers["Message-ID"]
     except:
-        fatal("Cannot access ID database")
+        fatal("No message ID in mail")
 
-    # Fix Misc-Info and Aux Item list for later user
+    log("Handling mail with Message-ID: %s" % message_id)
+
+    # Lookup Message-ID -> Text-No (fails if this is a new mail)
+    try:
+        (existing_text_no, added_time_t) = message_id_db[message_id]
+        log("This is existing article %d" % existing_text_no)
+    except KeyError:
+        log("This mail is new")
+        existing_text_no = None
+
+    # Map recipient names to conference numbers
+    recipient_list = name_list_to_conf_no_list(envelope_recipients)
+    if len(recipient_list) == 0:
+        fatal("No valid recipients found")
+
+    # Choose function
+    if existing_text_no is None:
+        # We should create a new article based on this mail
+        create_article(mail, envelope_sender, recipient_list,
+                       message_id)
+    else:
+        # We should add new recipients to this article
+        add_recipients(mail, envelope_sender, recipient_list,
+                       message_id, existing_text_no)
+
+
+# Create a new article based on this mail
+def create_article(mail, envelope_sender, envelope_recipients,
+                   message_id):
+
+    # Threading. If the In-Reply-To header is present, we attempt
+    # threading.  According to my interpretation of the mail
+    # standards, the In-Reply-To-field should never contain multiple
+    # ID:s, and there should never be more than one header line of
+    # this type. Is that true? If not, we will have to extend this
+    # code to handle multiple values.
+
+    in_reply_to_text_no = None
+    if mail.headers.has_key("In-Reply-To"):
+        in_reply_to = mail.headers["In-Reply-To"]
+        try:
+            (in_reply_to_text_no, created) = message_id_db[in_reply_to]
+            log("In reply to %s (article %d)" % \
+                (in_reply_to, in_reply_to_text_no))
+        except:
+            log("In reply to %s (which cannot be found in KOM)" % \
+                (in_reply_to))
+
+    # MIME multipart handling.  We choose not to preserve the exact
+    # hierachical structure of the MIME message itself, as that would
+    # lead to a situation where the articles corresponding to the
+    # "inner nodes", e.g. multipart/mixed, would be empty and serve
+    # only as placeholders for comments. Instead, we do something
+    # really simple: We get all discrete parts in a linear list, and
+    # let the first part be the main article. All remaining parts will
+    # become comments to this article, regardless of the original
+    # hierarchical structure in the MIME message.
+
+    parts = mail.linear_list_of_discrete_parts()
+    log("Number of MIME parts: %d" % len(parts))
+    
+    # Handle the first (perhaps only) part
+    text_no = create_article_part(mail,
+                                  envelope_sender,
+                                  envelope_recipients,
+                                  parts[0],
+                                  in_reply_to_text_no,
+                                  parent = None)
+
+    # Handle the rest of the parts as comments to the first part
+    for part in parts[1:]:
+        sub_text_no = create_article_part(mail,
+                                          envelope_sender,
+                                          envelope_recipients,
+                                          part,
+                                          in_reply_to_text_no,
+                                          parent = text_no)
+
+    # Threading. Register Message-ID -> (Text-No, creation time) mapping.
+    try:
+        message_id_db[message_id] = (text_no, int(time.time())) 
+        log("Message-ID recorded in database.")
+    except:
+        log("Failed to record Message-ID in database.")
+        pass
+
+# Create article part
+# The "parent" argument tells us if this is the main article or
+# an appendix. A lot of actions below depends on this.
+def create_article_part(mail,
+                        envelope_sender,
+                        recipient_list,
+                        part,
+                        in_reply_to_text_no = None,
+                        parent = None):
+
+    # Prepare Misc-Info and Aux Item list for later user
     misc_info = kom.CookedMiscInfo()
     aux_items = []
 
-    # Add recipients
-    no_of_valid_recipients = 0
-    for envelope_recipient in envelope_recipients:
-        # Try to get recipient conference (or person = letterbox) from
-        # the envelope recipient. We expect a single integer, the
-        # LysKOM conf_no. Perhaps we will add other address forms later.
-
-        try:
-            conf_no = string.atoi(envelope_recipient)
-        except:
-            continue
-
-        try:
-                conf_stat = c.conferences[conf_no]
-        except:
-            continue
-
-        # Add recipient to Misc-Info
+    # Add recipients to Misc-Info
+    for conf_no in recipient_list:
         mir = kom.MIRecipient(type = kom.MIR_TO, recpt = conf_no)
         misc_info.recipient_list.append(mir)
-        no_of_valid_recipients = no_of_valid_recipients + 1
 
-    if no_of_valid_recipients == 0:
-        fatal("No valid recipients found")
+    # Threading of main article based on In-Reply-To.
+    if parent is None and in_reply_to_text_no is not None:
+        mic = kom.MICommentTo(kom.MIC_COMMENT, in_reply_to_text_no)
+        misc_info.comment_to_list.append(mic)
 
-
-    # If the In-Reply-To header is present, we attempt threading.
-    # According to the DRUMS document, the In-Reply-To-field should
-    # never contain multiple ID:s, and there should never be more
-    # than one header line of this type. Is that true? If not, we
-    # will have to extend this code to handle multiple values.
-    # We only thread the first MIME part.
-
-    if parent is None and mail_headers.has_key("In-Reply-To"):
-        in_reply_to = mail_headers["In-Reply-To"]
-        aux_items.append(kom.AuxItem(kom.AI_MX_IN_REPLY_TO,
-                                     in_reply_to))
-        try:
-            (text_no, created) = id_db[in_reply_to]
-            mic = kom.MICommentTo(kom.MIC_COMMENT, text_no)
-            misc_info.comment_to_list.append(mic)
-            log("Threading: comment to %s (text %d)\n" % \
-                (in_reply_to, text_no))
-        except:
-            log("Threading: cannot find %s\n" % (in_reply_to))
-            pass
-
-    # If this is not the first MIME part, make it a comment
-    # to the first part. Record the link in an aux-item too,
-    # so a client can see that this belongs to the same 
-    # email.
-    
+    # Threading of appendices as comments (or footnotes) to the
+    # main article. We mark the appendix with a special aux-item,
+    # mx-mime-belongs-to to designate it as a MIME appendix.
     if parent is not None:
         mic = kom.MICommentTo(APPENDIX_COMMENT_TYPE, parent)
         misc_info.comment_to_list.append(mic)
         aux_items.append(kom.AuxItem(kom.AI_MX_MIME_BELONGS_TO, str(parent)))
         
-    # Creating software (always present)
+    # Let the world know about this marvelous creating software :-)
     aux_items.append(kom.AuxItem(kom.AI_CREATING_SOFTWARE,
                                  "komimportmail %s" % revision))
 
-    
-    # Mail headers (only for first MIME part)
-    if parent is None:
+    # Handle envelope information (creating aux-items)
+    # We only put these aux-items on the main article (not on appendices).
 
-        # Envelope sender
+    if parent is None:
         aux_items.append(kom.AuxItem(kom.AI_MX_ENVELOPE_SENDER,
                                      envelope_sender))
+        # Currently, the envelope recipients are not stored anywhere.
+        # Perhaps that would be useful later on if the recognized
+        # adresses becomes more advanced than simple integers.
 
-        # Single header fields
+    # Handle mail headers (creating aux-items)
+    # We only put these aux-items on the main article (not on appendices).
+
+    if parent is None:
+        # Aux-items for non-address single header fields
         for (header_name, aux_item_type) in [
             ("Message-ID", kom.AI_MX_MESSAGE_ID),
+            ("In-Reply-To", kom.AI_MX_IN_REPLY_TO),
+            ]:
+            if mail.headers.has_key(header_name):
+                ai = kom.AuxItem(aux_item_type,
+                                 rfc1522.decode(mail.headers[header_name]))
+                aux_items.append(ai)
+
+        # Aux-items for adress header fields come in three formats:
+        #
+        # 1) Complete address including name (mailbox in the
+        #    terminology of draft-ietf-drums-msg-fmt-07.txt)
+        #    Example: "Joe Q. Public" <john.q.public@example.com>
+        #         or  john.q.public@example.com
+        #
+        # 2) Just the bare email address (called addr-spec)
+        #    Example: john.q.public@example.com
+        # 
+        # 3) Just the name (a display-name in the drums specification):
+        #    Example: Joe Q. Public
+        # 
+        # The rationale for using different formats for different aux-items
+        # is that the LysKOM clients should not have to be able to
+        # parse addresses in order to use Reply-To adresses, etc.
+
+        for (header_name, aux_item_1, aux_item_2, aux_item_3) in [
+            ("From", None, kom.AI_MX_FROM, kom.AI_MX_AUTHOR),
+            ("To", kom.AI_MX_TO, None, None),
+            ("Cc", kom.AI_MX_CC, None, None),
+            ("Reply-To", None, kom.AI_MX_REPLY_TO, None),
             ]:
     
-            if mail_headers.has_key(header_name):
-                aux_items.append(kom.AuxItem(aux_item_type,
-                                             rfc1522.decode(mail_headers[header_name])))
-    
-        # Adress header fields. The format is one of:
-        # - email address (e.g. "kent@lysator.liu.se")
-        # - fullname <email> (e.g. "Kent Engström <kent@lysator.liu.se>")
-        # N.B.: we do not fill in the mx-author aux-item.
-        for (header_name, aux_item_type) in [
-            ("From", kom.AI_MX_FROM),
-            ("To", kom.AI_MX_TO),
-            ("Cc", kom.AI_MX_CC),
-            ("Reply-To", kom.AI_MX_REPLY_TO),
-            ]:
-    
-            for (name_part, email_part) in mail_headers.getaddrlist(header_name):
-                name_part = rfc1522.decode(name_part)
-                if name_part:
-                    email = "%s <%s>" % (name_part, email_part)
+            for (display_name, addr_spec) in \
+                mail.headers.getaddrlist(header_name):
+                # Remove outer double qoutes and RFC1522 coding if
+                # present in the display name.                
+                if display_name[0:1] == '"' and display_name[-1:0] == '"':
+                    display_name = display_name[1:-1]
+                display_name = rfc1522.decode(display_name)
+
+                # Recreate mailbox
+                if display_name:
+                    mailbox = "%s <%s>" % (display_name, addr_spec)
                 else:
-                    email = email_part
-                aux_items.append(kom.AuxItem(aux_item_type, email))
-                                             
+                    mailbox = addr_spec
+
+                # Add aux-items of the correct type
+                if aux_item_1:
+                    aux_items.append(kom.AuxItem(aux_item_1, mailbox))
+                if aux_item_2:
+                    aux_items.append(kom.AuxItem(aux_item_2, addr_spec))
+                if aux_item_3:
+                    aux_items.append(kom.AuxItem(aux_item_3, display_name))
     
         # Date
-        if mail_headers.has_key("Date"):
-            parsed_date = rfc822.parsedate_tz(mail_headers["Date"])
+        if mail.headers.has_key("Date"):
+            parsed_date = rfc822.parsedate_tz(mail.headers["Date"])
             if parsed_date is not None:
                 tz_mins = parsed_date[9] / 60
                 if tz_mins == 0:
@@ -212,67 +290,136 @@ def create_article(envelope_sender,
     
         # The complete set of mail headers (no decoding of these)
         aux_items.append(kom.AuxItem(kom.AI_MX_MISC,
-                                     string.join(mail_headers.headers, "")))
+                                     string.join(mail.headers.headers,
+                                                 "")))
+
+    # Handle MIME headers (creating aux-items)
+    # We put these aux-items on the main article and the appendices
 
     # MIME Content type
-    mime_type = part_headers.gettype()
+    mime_type = part.headers.gettype()
     aux_items.append(kom.AuxItem(kom.AI_MX_MIME_CONTENT_TYPE,
                                  mime_type))
-
-    # Old standard for KOM content type (a line first in the body)
-    kom_type = ""
-    if mime_type == "text/html":
-        kom_type = "html:\n"
-    body = kom_type + body
+    log("MIME type of this part: %s" % mime_type)
 
     # MIME filename (Name parameter of Content-Type header)
-    filename = part_headers.getparam("name")
-    if filename is not None:
+    mime_filename = part.headers.getparam("name")
+    if mime_filename:
         aux_items.append(kom.AuxItem(kom.AI_MX_MIME_FILE_NAME,
-                                     filename))
+                                     mime_filename))
 
     # The complete set of MIME part headers (no decoding of these)
     # FIXME: If the imported mail is just one single discrete part, this
     # is identical to the mail headers in MX_MISC.
     aux_items.append(kom.AuxItem(kom.AI_MX_MIME_MISC,
-                                 string.join(part_headers.headers, "")))
+                                 string.join(part.headers.headers, "")))
+
 
     # Subject
-    if mail_headers.has_key("Subject"):
-        subject = rfc1522.decode(mail_headers["Subject"])
+    if mail.headers.has_key("Subject"):
+        subject = rfc1522.decode(mail.headers["Subject"])
     else:
         subject = ""
 
-    # If this is not the first part, add text to subject about appendix
+    # The subject of an appendix is slightly modified 
     if parent is not None:
-        if filename is None:  
-            subject = APPENDIX_TEXT_NONAME + subject
+        if mime_filename:
+            subject = APPENDIX_SUBJECT_PREFIX % mime_filename + subject
         else:
-            subject = APPENDIX_TEXT % filename + subject
+            subject = APPENDIX_SUBJECT_PREFIX_NONAME + subject
       
-    # Send
+    # Try to create article part
     try:
-        text_no = send_to_kom(subject, body, misc_info, aux_items)
+        text_no = send_to_kom(subject, part.data, misc_info, aux_items)
     except:
-        fatal("Failed to send text (%s)" % sys.exc_info()[0])
+        fatal("Failed to create article (error %s)" % sys.exc_info()[0])
                           
-    # Register mapping Message-ID -> text number (if threading)
-    
-    if parent is None and mail_headers.has_key("Message-ID"):
+    return text_no
+
+
+# Send a text (subject, body, Misc-Info and Aux-Items) to KOM.
+# Destructively prune comment-to/footnote-to Misc-Info items
+# if they seem to cause problems.
+# Return text_no or throw exception.
+def send_to_kom(subject, body, misc_info, aux_items):
+    attempting_to_send = 1
+    while attempting_to_send:
         try:
-            id_db[mail_headers["Message-ID"]] = (text_no, int(time.time()))
-        except:
-            pass
+            text_no = kom.ReqCreateText(c,
+                                        subject + "\n" + body,
+                                        misc_info, aux_items).response()
+            log("Article %d created" % text_no)
+            attempting_to_send = 0
+        except kom.NoSuchText, error_status:
+            # We assume this is because of a bad Comment-To link
+            # (perhaps the text we are trying to comment has been
+            # deleted). Remove the offending Misc-Info entry and
+            # try again, if possible.
+            attempting_to_send = 0
+            try:
+                bad_text_no = string.atoi(str(error_status))
+                log("Article creation failed as commented article %d does not exist" % bad_text_no)
+                for i in range(0,len(misc_info.comment_to_list)):
+                    if misc_info.comment_to_list[i].text_no == bad_text_no:
+                        del misc_info.comment_to_list[i]
+                        attempting_to_send = 1
+                        log("Retrying with offending misc-item removed")
+                        break
+            except:
+                # If we fail to remove the offending Misc-Info item,
+                # we raise an exception
+                raise kom.NoSuchText, bad_text_no # hope it was set
 
     return text_no
-                
+
+# Add more recipients to this article
+# We do not add new aux-items, even if some headers may be different
+# in this copy (e.g. the "Received:" trace lines).
+def add_recipients(mail, envelope_sender, recipient_list,
+                   message_id, existing_text_no):
+
+    # Just loop and try to add the recipients, silently
+    # ignoring any errors from the server.
+    for recipient in recipient_list:
+        try:
+            kom.ReqAddRecipient(c,
+                                existing_text_no,
+                                recipient,
+                                kom.MIR_TO).response()
+            log("Added conference %d as recipient" % recipient)
+        except kom.ServerError:
+            log("Failed (%s) to add conference %d as recipient" % \
+                (sys.exc_info()[0], recipient))
+
+# Convert a list of names to a list of conference numbers
+# Currently, we expect the names to be simple integers, corresponding
+# to the conference number of the conference or person (= letterbox)
+# that should receive the article.
+def name_list_to_conf_no_list(name_list):
+    conf_no_list = []
+    for name in name_list:
+        # Try converting
+        try:
+            conf_no = string.atoi(name)
+        except:
+            log("Bad recipient name %s ignored" % name)
+            continue
+
+        # Simple check for existence of conference.
+        try:
+                conf_stat = c.conferences[conf_no]
+        except:
+            log("Recipient %d ignored (conference not found)" % conf_no)
+            continue
+
+        conf_no_list.append(conf_no)
+        log("Recipient %d seems to be OK" % conf_no)
+
+    return conf_no_list
+        
 # MAIN
 
-# Log file
-log_file = open(LOGFILE, "a")
-log = log_file.write
-
-# Arguments
+# Arguments: envelope-sender [envelope-recipient...]
 
 if len(sys.argv) < 3:
     fatal("Wrong number of arguments")
@@ -290,29 +437,17 @@ try:
 except:
     fatal("Failed to connect to LysKOM server")
 
-# Read MIME mail. MIME multipart handling is really simple:
-# We get all discrete parts in a linear list, and let the first
-# part be the main article. All remaining parts will become
-# comments to this article, regardless of the original
-# hierarchical structure in the MIME message.
+# Prepare to use the Message-ID database
+try:
+    message_id_db = lockingshelve.LockingShelve(ID_DB_FILE)
+except:
+    fatal("Cannot access Message-ID database")
 
+# Read MIME mail
 mail = mimereader.Message(sys.stdin)
-parts = mail.linear_list_of_discrete_parts()
 
-
-# Handle the first (and maybe only part)
-log("Handling article %s -> %s\n" % (envelope_sender, envelope_recipients))
-text_no = create_article(envelope_sender, envelope_recipients,
-                         mail.headers, parts[0].headers, parts[0].data,
-                         parent = None)
-
-# Handle the rest of the parts as comments to the first part
-for part in parts[1:]:
-    # Only text/* and message/* is allowed now.
-    if part.maintype in ["text","message"]:
-        sub_text_no = create_article(envelope_sender, envelope_recipients,
-                                     mail.headers, part.headers, part.data,
-                                     parent = text_no)
+# Create an article or add recipients to an existing one
+create_article_or_add_recipients(mail, envelope_sender, envelope_recipients)
 
 # Exit successfully
 sys.exit(0)

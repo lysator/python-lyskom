@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komparam.py,v 1.2 1999/07/23 18:00:32 kent Exp $
+# $Id: komparam.py,v 1.3 1999/07/23 18:12:31 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Handle connection and login in a common way. Parameters are
@@ -54,7 +54,7 @@ class Parameters:
         try:
             kom.ReqLogin(conn, self.person_no, password).response()
         except:
-            return (None, "failed to log in as %s" % persons[0].name)
+            return (None, 'failed to log in as "%s"' % persons[0][1])
 
         # Done!
         return (conn, None)

@@ -1,5 +1,5 @@
 # Handling of RFC1522 coding in mail headers
-# $Id: rfc1522.py,v 1.1 1999/07/19 18:06:48 kent Exp $
+# $Id: rfc1522.py,v 1.2 1999/07/19 18:37:05 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # NOTE! Just enough for the needs of komimportmail. Use with caution.
@@ -10,7 +10,7 @@
 import re
 import string
 
-decodable_charsets = ["ISO-8859-1"]
+decodable_charsets = ["ISO-8859-1","US-ASCII"]
 re_coded = re.compile("=\?([^?]*)\?[qQ]\?([^?]*)\?=")
 
 def decode(str):

@@ -14,13 +14,14 @@ import re
 from komgazonk_config import *
 import cPickle
 import random
+import copy
 
 CLIENTNAME="komgazonk"
 VERSION="0.1.4"
 
 INVISIBLE = 1
 
-MAX_ENTRIES_GUESS_LIST = 200
+MAX_ENTRIES_GUESS_LIST = 300
 
 wrong_guess_list = ["Fel, fel, fel, fel!", \
                     "Nepp!", \
@@ -435,23 +436,24 @@ class Gazonk:
                 return
             else:
                 next_clue_time = self.time_last_action + GAZONK_CLUE_TIME - current_time
+                (hours, minutes) = divmod(next_clue_time/60, 60)
                 message = "Det är %d timmar och %d minuter kvar till nästa ledtråd" % \
-                          (int(next_clue_time/3600), int(next_clue_time/60))
+                          divmod(next_clue_time/60,60)
                 send_message(message, msg.sender)
                 return
 
-        # Vem är gazonk?
+        # Statistik om en person.
         m = Gazonk.re_statistik.match(msg.message)
         if m:
             person_str = m.group(1)
             if len(person_str) == 0:
-                self.tstats.total.send_person_stats(msg.sender)
+                self.tstats.send_person_stats(msg.sender)
             else:
                 operson = find_person(person_str)
                 if operson == None:
                     send_message("Hittade ingen eller fler än en sådan person.",msg.sender)
                 else:
-                    self.tstats.total.send_person_stats(msg.sender, operson)
+                    self.tstats.send_person_stats(msg.sender, operson)
             return
 
         # Saker som alla utom gazonk får göra:
@@ -542,6 +544,25 @@ class TotStats:
         tmpconv = {0: -1, 1: 3, 2: 2, 3: 6, 4: 1, 5: 0}
         return tmptime[tmpconv[self.disp_stat]]
 
+    def send_person_stats(self, person, about_person = None):
+        if about_person == None:
+            if not self.total.people.has_key(person) and \
+               not self.cr.people.has_key(person):
+                send_message("Du har inte skaffat dig någon statistik än.", person)
+            else:
+                if self.total.people.has_key(person):
+                    nstats = copy.deepcopy(self.total.people[person])
+                    if self.cr.people.has_key(person):
+                        nstats.merge_into(self.cr.people[person])
+                else:
+                    nstats = copy.deepcopy(self.cr.perople[person])
+                nstats.send_person_stats(person)
+        else:
+            if not self.total.people.has_key(about_person[0]):
+                send_message("%s har inte någon statistik än." % about_person[1], person)
+            else:
+                self.total.people[about_person[0]].send_person_stats(person,about_person)
+
     def check(self, g):
         if self.disp_stat == 0:
             return
@@ -600,18 +621,6 @@ class Stats:
             else:
                 self.people[person].merge_into(other.people[person])
 
-    def send_person_stats(self, person, about_person = None):
-        if about_person == None:
-            if not self.people.has_key(person):
-                send_message("Du har inte skaffat dig någon statistik än.", person)
-            else:
-                self.people[person].send_person_stats(person)
-        else:
-            if not self.people.has_key(about_person[0]):
-                send_message("%s har inte någon statistik än." % about_person[1], person)
-            else:
-                self.people[about_person[0]].send_person_stats(person,about_person)
-
     def send_stat_letter(self, s, g):
         mstrings = { 1: ("Den", "timme", "timmen"), \
                      2: ("Den", "dag", "dagen"), \
@@ -643,7 +652,7 @@ class Stats:
         if acocnum == None:
             message += "\n\n"
         else:
-            message += "antalet ledtrådar\n"
+            message += " Antalet ledtrådar\n"
             message += "som behövts i snitt innan lösenordet klarades var %2.1f\n\n" % \
                        self.acoc.get()
 
@@ -654,11 +663,10 @@ Led    = antal ledtrådar som behövts i snitt för att klara lösenordet
 GLed   = antal ledtrådar motståndarna behövt i snitt för att klara
          lösenordet när personen är gazonk
 person = för denna person
-fo     = flest gissningar på dessa ord
 
 Statistik över personer som gissat:
 -----------------------------------
- Gissn Korr   k/g   Led GLed person
+ Gissn Korr    k/g   Led GLed person
 """
 
         plist_tmp = zip(self.people.values(), self.people.keys())
@@ -668,7 +676,9 @@ Statistik över personer som gissat:
 
         for (guesscount, person, pstats) in plist:
             pname = kom.ReqGetUconfStat(conn, person).response().name
-            kpg = "%3.2f%%" % (float(pstats.win_count)/float(guesscount)*100.0)
+            kpg = ""
+            if guesscount > 0:
+                kpg = "%3.2f%%" % (float(pstats.win_count)/float(guesscount)*100.0)
             nled = pstats.m_coc.get()
             led = ""
             if nled != None:
@@ -679,7 +689,7 @@ Statistik över personer som gissat:
                 gled = "%2.1f" % ngled
             row = string.rjust(str(guesscount),6) + " " + \
                   string.rjust(str(pstats.win_count),4) + " " + \
-                  string.rjust(kpg, 6) + " " + \
+                  string.rjust(kpg, 7) + " " + \
                   string.rjust(led, 4) + " " + \
                   string.rjust(gled, 4) + " " + \
                   pname
@@ -688,13 +698,13 @@ Statistik över personer som gissat:
             glist = zip(pstats.guesses.db.values(), pstats.guesses.db.keys())
             glist.sort()
             glist.reverse()
-            srow = "       fo"
-            c = ":"
-            for (amount, guess) in glist[:3]:
-                srow += c + " %d %s" % (amount, guess)
-                if c == ":":
-                    c = ","
-            message += row + "\n" + srow + "\n"
+            #srow = "       fo"
+            #c = ":"
+            #for (amount, guess) in glist[:3]:
+            #    srow += c + " %d %s" % (amount, guess)
+            #    if c == ":":
+            #        c = ","
+            message += row + "\n" # + srow + "\n"
 
         #if self.total != 1:
         #    message += "\nAlla gissningar:\n"
@@ -736,8 +746,8 @@ class PersonStats:
         if about_person != None:
             message = "Statistik om <Person %d: %s>.\n\n" % about_person
             sdina = "hans"
-        message += "Gissningar:                          %d\n" % self.guesses.count
-        message += "Korrekta gissningar:                 %d\n" % self.win_count
+        message += "Gissningar:                        %d\n" % self.guesses.count
+        message += "Korrekta gissningar:               %d\n" % self.win_count
         if self.guesses.count > 0:
             message += "Andel korrekta gissningar:         %3.2f%%\n" % \
                        (float(self.win_count)/float(self.guesses.count)*100.0)
@@ -778,8 +788,9 @@ class GuessDB:
 
     def create_string(self, max_nr = MAX_ENTRIES_GUESS_LIST, total_word = "Sammanlagt"):
         glist = zip(self.db.values(), self.db.keys())
-        glist.sort()
-        glist.reverse()
+        gtmp = [(-n,s) for n,s in glist]
+        gtmp.sort()
+        glist = [(-n,s) for n,s in gtmp]
 
         guess_string = ""
         for (amount, guess) in glist[:max_nr]:
@@ -844,7 +855,7 @@ def break_up_row(rstr, row_length = 68):
 # Skriv ut en ledtråd på ett snyggt sätt.
 def print_clue(s, nr):
     nrstr = str(nr) + ". "
-    ns = break_up_row(s, 60-len(nrstr))
+    ns = break_up_row(s, 72-len(nrstr))
     ns = indent(ns, len(nrstr))
     ns = nrstr + ns[len(nrstr):]
     return ns

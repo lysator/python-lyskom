@@ -1299,8 +1299,7 @@ def get_next_clue_time(start_time, time_interval, amount):
 
 # Gör en snygg tabell (eventuellt flera) av diverse resultat.
 def write_table(table, desc):
-    ntable = [(reduce(lambda x, y: x+y, v),d,v) for d,v in table]
-    ntable = [(s,d,v) for s,d,v in table]
+    ntable = [(-reduce((lambda x, y: x+y), v),d,v) for d,v in table]
     ntable.sort()
     table = [(d,v,-s) for s,d,v in ntable]
 

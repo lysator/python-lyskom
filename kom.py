@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.28 2002/06/22 17:13:43 astrand Exp $
+# $Id: kom.py,v 1.29 2002/07/17 19:43:59 sshd Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -400,6 +400,15 @@ class ReqSubComment(Request):
                       (self.id, text_no, comment_to))
 
 # get-map [34] (1) Obsolete (10) Use local-to-global (103)
+class ReqGetMap(Request):
+    def __init__(self, c, conf_no, first_local_no, no_of_texts):
+	self.register(c)
+	c.send_string("%d 34 %d %d %d\n" %
+		      (self.id, conf_no, first_local_no, no_of_texts))
+
+    def parse_response(self):
+	# --> Text-List
+	return self.c.parse_object(TextList)
 
 # get-time [35] (1) Recommended
 class ReqGetTime(Request):
@@ -1597,6 +1606,13 @@ class Member:
         self.added_by = c.parse_int()
         self.added_at = c.parse_object(Time)
         self.type = c.parse_object(MembershipType)
+
+# TEXT LIST
+
+class TextList:
+    def parse(self, c):
+	self.first_local_no = c.parse_int()
+	self.texts = c.parse_array_of_int()
 
 # TEXT MAPPING
 

@@ -1,0 +1,204 @@
+#!/usr/bin/python
+# LysKOM Protocol A version 10 client interface for Python
+# $Id: komimportmail,v 1.1 1999/07/17 21:55:34 kent Exp $
+# (C) 1999 Kent Engström. Released under GPL.
+
+import sys
+import string
+import time
+import rfc822
+import shelve
+import kom
+
+# Configuration
+
+KOMSERVER = "localhost"
+KOMPORT = 4894
+KOMPERSON = 21
+KOMPASSSWORD = "eppelpost"
+LOGFILE = "/home/kent/lyskom/python-lyskom/maillog"
+ID_DB_FILE = "/home/kent/lyskom/python-lyskom/id.db"
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error reporting
+def fatal(str):
+    sys.stderr.write("ERROR: " + str + "\n")
+    sys.exit(1)
+
+# Send to KOM
+def send_to_kom(envelope_sender, envelope_recipients, headers, body):
+    # Open threading database of ID:s
+    try:
+        id_db = shelve.open(ID_DB_FILE)
+    except:
+        fatal("Cannot open ID database")
+
+    # Fix Misc-Info and Aux Item list for later user
+    mi = kom.CookedMiscInfo()
+    aux_items = []
+
+    # Add recipients
+    no_of_valid_recipients = 0
+    for envelope_recipient in envelope_recipients:
+        # Try to get recipient conference (or person = letterbox) from
+        # the envelope recipient. We expect a single integer, the
+        # LysKOM conf_no. Perhaps we will add other address forms later.
+
+        try:
+            conf_no = string.atoi(envelope_recipient)
+        except:
+            continue
+
+        try:
+                conf_stat = c.conferences[conf_no]
+        except:
+            continue
+
+        # Add recipient to Misc-Info
+        mir = kom.MIRecipient(type = kom.MIR_TO, recpt = conf_no)
+        mi.recipient_list.append(mir)
+        no_of_valid_recipients = no_of_valid_recipients + 1
+
+    if no_of_valid_recipients == 0:
+        fatal("No valid recipients found")
+
+
+    # If the In-Reply-To header is present, we attempt threading.
+    # According to the DRUMS document, the In-Reply-To-field should
+    # never contain multiple ID:s, and there should never be more
+    # than one header line of this type. Is that true?
+    if headers.has_key("In-Reply-To"):
+        in_reply_to = headers["In-Reply-To"]
+        try:
+            (text_no, created) = id_db[in_reply_to]
+            mic = kom.MICommentTo(kom.MIC_COMMENT, text_no)
+            mi.comment_to_list.append(mic)
+        except:
+            pass
+
+    # Creating software
+    aux_items.append(kom.AuxItem(kom.AI_CREATING_SOFTWARE,
+                                 "komimportmail %s" % revision))
+
+    # Single header fields
+    # FIXME: Remove RFC1522 QP-coding of header lines
+    for (header_name, aux_item_type) in [
+        ("Reply-To", kom.AI_MX_REPLY_TO),
+        ("Message-ID", kom.AI_MX_MESSAGE_ID),
+        ]:
+
+        if headers.has_key(header_name):
+            aux_items.append(kom.AuxItem(aux_item_type, headers[header_name]))
+
+    # List/adress header fields
+    for (header_name, aux_item_email, aux_item_fullname) in [
+        ("From", kom.AI_MX_FROM, kom.AI_MX_AUTHOR),
+        ("To", kom.AI_MX_TO, None),
+        ("Cc", kom.AI_MX_CC, None),
+        ]:
+
+        for (full_name, email) in headers.getaddrlist(header_name):
+            if aux_item_email:
+                aux_items.append(kom.AuxItem(aux_item_email, email))
+            if aux_item_fullname:
+                aux_items.append(kom.AuxItem(aux_item_fullname, full_name))
+
+    # Date
+    if headers.has_key("Date"):
+        parsed_date = rfc822.parsedate_tz(headers["Date"])
+        if parsed_date is not None:
+            tz_mins = parsed_date[9] / 60
+            if tz_mins == 0:
+                tz = "+0000"
+            elif tz_mins > 0:
+                tz = "+%02d%02d" % (tz_mins/60, tz_mins % 60)
+            else:
+                tz_mins = -tz_mins
+                tz = "-%02d%02d" % (tz_mins/60, tz_mins % 60)
+                
+            date = "%04d-%02d-%02d %02d:%02d:%02d %s" % \
+                   (parsed_date[0], parsed_date[1], parsed_date[2],
+                    parsed_date[3], parsed_date[4], parsed_date[5],
+                    tz)
+            aux_items.append(kom.AuxItem(kom.AI_MX_DATE, date))
+
+    # The complete set of headers
+    aux_items.append(kom.AuxItem(kom.AI_MX_MISC,
+                                 string.join(headers.headers, "")))
+
+    # Subject
+    if headers.has_key("Subject"):
+        subject = headers["Subject"]
+    else:
+        subject = ""
+    
+    # Sending
+    attempting_to_send = 1
+    while attempting_to_send:
+        try:
+            text_no = kom.ReqCreateText(c,
+                                        subject + "\n" + body,
+                                        mi, aux_items).response()
+            attempting_to_send = 0
+        except kom.NoSuchText, error_status:
+            # We assume this is because of a bad Comment-To link
+            # (perhaps the text we are trying to comment has been
+            # deleted). Remove the offending Misc-Info entry and
+            # try again, if possible.
+            attempting_to_send = 0
+            try:
+                bad_text_no = string.atoi(str(error_status))
+                for i in range(0,len(mi.comment_to_list)):
+                    if mi.comment_to_list[i].text_no == bad_text_no:
+                        del mi.comment_to_list[i]
+                        attempting_to_send = 1
+                        break
+            except "j":
+                pass
+        except "k":
+            fatal("Failed to send text (%s)" % sys.exc_info()[0])
+                          
+    # Register in ID database
+    
+    if headers.has_key("Message-ID"):
+        try:
+            id_db[headers["Message-ID"]] = (text_no, int(time.time()))
+        except:
+            pass
+                
+# MAIN
+
+# Log file
+log_file = open(LOGFILE, "a")
+log = log_file.write
+
+# Arguments
+
+if len(sys.argv) < 3:
+    fatal("Wrong number of arguments")
+envelope_sender = sys.argv[1]
+envelope_recipients = sys.argv[2:]
+
+# Connect and log in
+
+try:
+    c = kom.CachedConnection(KOMSERVER, KOMPORT)
+    try:
+        kom.ReqLogin(c, KOMPERSON, KOMPASSSWORD, invisible=1).response()
+    except:
+        fatal("Failed to login to LysKOM server", exit_now=1)
+except:
+    fatal("Failed to connect to LysKOM server", exit_now=1)
+
+# Read mail 
+headers = rfc822.Message(sys.stdin, seekable = 0)
+body = sys.stdin.read()
+
+# Post it
+send_to_kom(envelope_sender, envelope_recipients, headers, body)
+
+# Exit successfully
+sys.exit(0)

@@ -1,0 +1,98 @@
+#!/usr/bin/python
+# LysKOM Protocol A version 10 client interface for Python
+# $Id: kommsg,v 1.1 1999/07/16 15:46:55 kent Exp $
+# (C) 1999 Kent Engström. Released under GPL.
+
+import kom
+import komparam
+import sys
+import getopt
+import string
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error/sucess reporting
+exit_code = 0
+def error(str, code = 2):
+    global exit_code
+    exit_code = max(exit_code, code)
+    sys.stderr.write("ERROR: " + str + "\n")
+
+def success(str):
+    sys.stderr.write("OK: " + str + "\n")
+
+def exit():
+    sys.exit(exit_code)
+
+# MAIN
+# Connect and log in
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, conn_error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], conn_error))
+    sys.exit(1)
+
+#
+# CHECK FOR OPTIONS
+#
+
+to = None
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   [
+                                       "to=",
+                                       "all",
+                                       ])
+for (opt, optarg) in options:
+    if opt == "--to":
+        to = optarg
+    elif opt == "--all":
+        to = 0
+    else:
+        error("Option %s not handled (internal error)" % opt)
+
+# Recipient
+
+if to == 0:
+    conf_no = 0
+elif to is not None:
+    matches = conn.lookup_name(to, 1, 1)
+    if len(matches) == 0:
+        error("%s -- recipient not found" % to)
+    elif len(matches) <> 1:
+        error("%s -- ambiguous recipient" % to)
+    else:
+        conf_no = matches[0][0]
+else:
+    error("recipient not specified")
+
+#
+# READ MESSAGE TEXT
+#
+
+# Errors already?
+if exit_code <> 0:
+    exit()
+
+text = sys.stdin.read()
+
+#
+# SEND MESSAGE
+#
+
+# Send!
+try:
+    kom.ReqSendMessage(conn, conf_no, text).response()
+    success("Message sent.")
+except kom.MessageNotSent:
+    error("Recipient not present (%s)" % sys.exc_info()[0:1], code = 1)
+    
+except kom.Error:
+    error("Failed to send message (%s)" % sys.exc_info()[0:1])
+
+exit()
+

@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komparam.py,v 1.4 1999/10/18 10:21:57 kent Exp $
+# $Id: komparam.py,v 1.5 2001/01/22 20:45:46 lundmark Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Handle connection and login in a common way. Parameters are
@@ -38,7 +38,7 @@ class Parameters:
 
         # Lookup name
         name = self.get_name()
-        if server is None:
+        if name is None:
             return (None, "name not specified")
         persons = conn.lookup_name(name, want_pers = 1, want_confs = 0)
         if len(persons) == 0:

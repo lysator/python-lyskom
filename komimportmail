@@ -1,6 +1,6 @@
 #!/usr/bin/python-1.5.2
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.4 1999/07/19 22:44:07 kent Exp $
+# $Id: komimportmail,v 1.5 1999/07/23 13:02:31 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -22,12 +22,12 @@ KOMPORT = 4894
 KOMPERSON = 21
 KOMPASSSWORD = "eppelpost"
 LOGFILE = "/home/kent/lyskom/python-lyskom/maillog"
-ID_DB_FILE = "/home/kent/lyskom/python-lyskom/id.db"
+ID_DB_FILE = "/home/kent/lyskom/python-lyskom/message-id"
 APPENDIX_TEXT_NONAME = "Bilaga till: "
 APPENDIX_TEXT = "Bilaga (%s) till: "
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.4 $"
+vc_revision = "$Revision: 1.5 $"
 revision = vc_revision[11:-2]
 
 # Error reporting
@@ -71,7 +71,8 @@ def send_to_kom(subject, body, misc_info, aux_items):
 # Note: parent = None means that this is the top node (first message part)
 #       parent = text_no means that this is a subnode (subsequent part)
 
-def create_article(envelope_sender, envelope_recipients,
+def create_article(envelope_sender,
+                   envelope_recipients,
                    mail_headers,
                    part_headers,
                    body,
@@ -128,14 +129,21 @@ def create_article(envelope_sender, envelope_recipients,
             (text_no, created) = id_db[in_reply_to]
             mic = kom.MICommentTo(kom.MIC_COMMENT, text_no)
             misc_info.comment_to_list.append(mic)
+            log("Threading: comment to %s (text %d)\n" % \
+                (in_reply_to, text_no))
         except:
+            log("Threading: cannot find %s\n" % (in_reply_to))
             pass
 
     # If this is not the first MIME part, make it a comment
-    # to the first part.
+    # to the first part. Record the link in an aux-item too,
+    # so a client can see that this belongs to the same 
+    # email.
+    
     if parent is not None:
         mic = kom.MICommentTo(kom.MIC_COMMENT, parent)
         misc_info.comment_to_list.append(mic)
+        aux_items.append(kom.AuxItem(kom.AI_MX_MIME_BELONGS_TO, str(parent)))
         
     # Creating software (always present)
     aux_items.append(kom.AuxItem(kom.AI_CREATING_SOFTWARE,
@@ -144,6 +152,10 @@ def create_article(envelope_sender, envelope_recipients,
     
     # Mail headers (only for first MIME part)
     if parent is None:
+
+        # Envelope sender
+        aux_items.append(kom.AuxItem(kom.AI_MX_ENVELOPE_SENDER,
+                                     envelope_sender))
 
         # Single header fields
         for (header_name, aux_item_type) in [
@@ -154,7 +166,7 @@ def create_article(envelope_sender, envelope_recipients,
                 aux_items.append(kom.AuxItem(aux_item_type,
                                              rfc1522.decode(mail_headers[header_name])))
     
-        # Adress header fields
+        # Adress header fields (single or not)
         for (header_name, aux_item_email, aux_item_fullname) in [
             ("From", kom.AI_MX_FROM, kom.AI_MX_AUTHOR),
             ("To", kom.AI_MX_TO, None),
@@ -188,9 +200,32 @@ def create_article(envelope_sender, envelope_recipients,
                         tz)
                 aux_items.append(kom.AuxItem(kom.AI_MX_DATE, date))
     
-        # The complete set of headers (no decoding of these)
+        # The complete set of mail headers (no decoding of these)
         aux_items.append(kom.AuxItem(kom.AI_MX_MISC,
                                      string.join(mail_headers.headers, "")))
+
+    # MIME Content type
+    mime_type = part_headers.gettype()
+    aux_items.append(kom.AuxItem(kom.AI_MX_MIME_CONTENT_TYPE,
+                                 mime_type))
+
+    # Old standard for KOM content type (a line first in the body)
+    kom_type = ""
+    if mime_type == "text/html":
+        kom_type = "html:\n"
+    body = kom_type + body
+
+    # MIME filename (Name parameter of Content-Type header)
+    filename = part_headers.getparam("name")
+    if filename is not None:
+        aux_items.append(kom.AuxItem(kom.AI_MX_MIME_FILE_NAME,
+                                     filename))
+
+    # The complete set of MIME part headers (no decoding of these)
+    # FIXME: If the imported mail is just one single discrete part, this
+    # is identical to the mail headers in MX_MISC.
+    aux_items.append(kom.AuxItem(kom.AI_MX_MIME_MISC,
+                                 string.join(part_headers.headers, "")))
 
     # Subject
     if mail_headers.has_key("Subject"):
@@ -198,13 +233,12 @@ def create_article(envelope_sender, envelope_recipients,
     else:
         subject = ""
 
-    # If this is not the first part, add text about appendix
+    # If this is not the first part, add text to subject about appendix
     if parent is not None:
-        partname = part_headers.getparam("name")
-        if partname is None:  
+        if filename is None:  
             subject = APPENDIX_TEXT_NONAME + subject
         else:
-            subject = APPENDIX_TEXT % partname + subject
+            subject = APPENDIX_TEXT % filename + subject
       
     # Send
     try:
@@ -257,6 +291,7 @@ parts = mail.linear_list_of_discrete_parts()
 
 
 # Handle the first (and maybe only part)
+log("Handling article %s -> %s\n" % (envelope_sender, envelope_recipients))
 text_no = create_article(envelope_sender, envelope_recipients,
                          mail.headers, parts[0].headers, parts[0].data,
                          parent = None)

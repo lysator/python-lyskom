@@ -74,7 +74,15 @@ HACKER SUMMARY
   learn server address, server port, person name/number and password
   from environment variables and/or a "~/.komrc" file.
 
-- komconfstats givs you statistics about a conference.
+- komconfwalker.py defines a class ConfTemporalWalker used to walk a
+  conference, processing articles written during a specified
+  period. This can be used for gathering various statistics (see
+  below).
+
+- komconfstats gives you statistics about a conference.
+
+- komconfwords gives you information about new words used in a
+  conference since last run.
 
 
 COPYRIGHT

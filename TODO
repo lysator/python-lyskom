@@ -6,9 +6,7 @@ THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 ** Add time logging
 ** Check what exit code is used for "already present" (duplication)
 ** Check AI_MX_IN_REPLY_TO semantics (should we include what we really used?)
-** multipart/alternative with text/plain and text/html: zap HTML?
 ** mail2kom can use recode - should we do that too?
-** Is there any need for decoding of ?B? headers?
 ** Tests
 *** Test GC in real life situation: is it working? is it locking OK?
 *** Profile and optimize (it's rather slow now)

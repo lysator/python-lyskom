@@ -1,5 +1,5 @@
 # Support for reading, decoding and decomposing MIME messages.
-# $Id: mimereader.py,v 1.3 1999/07/23 13:01:34 kent Exp $
+# $Id: mimereader.py,v 1.4 2001/01/15 22:04:00 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # This module is primarily designed for use with komimportmail,
@@ -49,6 +49,11 @@ class Message:
     # Return a linear list of all discrete parts
     def linear_list_of_discrete_parts(self):
         return self.data.linear_list_of_discrete_parts()
+
+    # Remove redundant HTML parts
+    def remove_redundant_html(self):
+        self.data.remove_redundant_html()
+
 
 # Common attributes and methods for a MIME part (discrete or multipart)
 class Part:
@@ -107,7 +112,12 @@ class DiscretePart(Part):
         
     def linear_list_of_discrete_parts(self):
         return [self]
-        
+
+    # Remove redundant HTML parts
+    def remove_redundant_html(self):
+        pass
+
+
 # Attributes of a multipart
 # - maintype, subtype: MIME type
 # - headers: mimetools.Message object encapsulating the headers of the part
@@ -156,3 +166,19 @@ class MultiPart(Part):
             ll = ll + p.linear_list_of_discrete_parts()
         return ll
     
+
+    # Remove redundant HTML parts
+    def remove_redundant_html(self):
+        # For the moment, concentrate on the most common case:
+        # - a multipart/alternative with first text/plain, then text/html
+        if self.subtype ==  "alternative" and \
+           len(self.parts) == 2 and \
+           self.parts[0].maintype == self.parts[1].maintype == "text" and \
+           self.parts[0].subtype == "plain" and \
+           self.parts[1].subtype == "html":
+            del self.parts[1]
+        else:
+            for p in self.parts:
+                p.remove_redundant_html()
+           
+

@@ -25,4 +25,7 @@ APPENDIX_COMMENT_TYPE = kom.MIC_COMMENT #or kom.MIC_FOOTNOTE
 # Skip AI_MX_DATE (for use with buggy aux-items.conf:s)
 SKIP_AI_MX_DATE = 0
 
+# Remove reduntant text/html after text/plain in multipart/alternative:
+REMOVE_REDUNDANT_HTML = 1
+
 # -- CONFIGURATION ENDS HERE ---

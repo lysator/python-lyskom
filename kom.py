@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.16 2001/01/08 08:40:44 kent Exp $
+# $Id: kom.py,v 1.17 2001/01/13 00:07:54 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -1616,7 +1616,6 @@ class TextMapping:
 
         if self.block_type == 0:
             # Sparse
-            print "[SPARSE TEXTMAPPING NOT TESTED]"
             self.type_text = "sparse"
             self.sparse_list = c.parse_array(TextNumberPair)
             for tnp in self.sparse_list:

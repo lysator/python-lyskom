@@ -1,6 +1,7 @@
 #!/usr/bin/python
+# -*- coding: iso-8859-1 -*-
 # Virtual classes to walk a conference, e.g. for statistics gathering
-# $Id: komconfwalker.py,v 1.3 2001/03/05 22:03:14 kent Exp $
+# $Id: komconfwalker.py,v 1.4 2004/12/28 15:23:20 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 
 import sys

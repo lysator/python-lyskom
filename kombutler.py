@@ -26,8 +26,11 @@ class LatentConnection(kom.Connection):
 
 
 class Tasks:
-    def __init__(self, c, master):
+    MBOX_SIZE_AUX = 25438
+    
+    def __init__(self, c, servant, master):
 	self.c = c
+	self.servant = servant
 	self.master = master
 	self.master_active = -1
 
@@ -54,13 +57,57 @@ class Tasks:
 	except os.error:
 	    pass
 
-	# No new mail, die
+	# No new mail, we're done
 	if not mailp:
 	    return
 
-	if self.is_active():
-	    kom.ReqSendMessage(self.c, self.master, 'New mail on %s' % socket.gethostname()).response()
-	    open(mbox).read(1)
+	# User not active, we're also done
+	if not self.is_active():
+	    return
+
+	# Find the last position we reported in this file
+
+	oldsize = 0
+	delaux = []
+	conf = kom.ReqGetConfStat(self.c, self.servant).response()
+	for aux in conf.aux_items:
+	    if aux.tag == self.MBOX_SIZE_AUX and not aux.flags.deleted:
+		delaux.append(aux.aux_no)
+		try:
+		    oldsize = max(string.atoi(aux.data), 0)
+		except ValueError:
+		    pass
+
+	f = open(mbox)
+	
+	# If file has shrunk, or the last position is not "^From ",
+	# reset oldsize
+
+	if s[ST_SIZE] < oldsize:
+	    oldsize = 0
+	elif oldsize > 0:
+	    f.seek(oldsize - 1)
+	    if f.read(6) != '\nFrom ':
+		oldsize = 0
+
+	# Extract all the new From: and Subject: lines
+	
+	f.seek(oldsize)
+
+	lines = f.readlines()
+	msg = ['New mail on %s:\n\n' % socket.gethostname()]
+
+	for line in lines:
+	    if string.lower(line[:5]) == 'from:' \
+	       or string.lower(line[:8]) == 'subject:':
+		msg.append(line)
+
+	# Send message to master
+	kom.ReqSendMessage(self.c, self.master, string.join(msg, '')).response()
+
+	# Update mbox position
+	aux = kom.AuxItem(self.MBOX_SIZE_AUX, str(s[ST_SIZE]))
+	kom.ReqModifyConfInfo(self.c, self.servant, [], [aux]).response()
 
     
 def main():
@@ -69,11 +116,11 @@ def main():
 	servant = string.atoi(sys.argv[2])
 	passwd = sys.argv[3]
     except (ValueError, IndexError):
-	print "Usage: efforum [-c] [-n #] master servant passwd"
+	print "Usage: %s master servant passwd" % sys.argv[0]
 	sys.exit(1)
 
     c = LatentConnection('kom.lysator.liu.se', 'butler', servant, passwd)
-    t = Tasks(c, master)
+    t = Tasks(c, servant, master)
     t.check_mbox()
 
 if __name__ == "__main__":

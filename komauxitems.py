@@ -34,12 +34,12 @@ AI_CANONICAL_NAME = 31 # (server)
 AI_MX_LIST_NAME = 32 # (conference)
 AI_SEND_COMMENTS_TO = 33 # (letterbox)
 AI_WORLD_READABLE = 34 # (text)
+AI_MX_REFUSE_IMPORT = 35 # (conference, letterbox)
 AI_MX_MIME_BELONGS_TO = 10100 # (text)
 AI_MX_MIME_PART_IN = 10101 # (text)
 AI_MX_MIME_MISC = 10102 # (text)
 AI_MX_ENVELOPE_SENDER = 10103 # (text)
 AI_MX_MIME_FILE_NAME = 10104 # (text)
-AI_MX_REFUSE_IMPORT = 10105 # (conference, letterbox)
 AI_ELISP_CLIENT_READ_FAQ = 10000 # (letterbox)
 AI_ELISP_CLIENT_REJECTED_RECOMMENDATION = 10001 # (letterbox)
 
@@ -78,12 +78,12 @@ aux_item_number_to_name = {
   AI_MX_LIST_NAME: "mx-list-name",
   AI_SEND_COMMENTS_TO: "send-comments-to",
   AI_WORLD_READABLE: "world-readable",
+  AI_MX_REFUSE_IMPORT: "mx-refuse-import",
   AI_MX_MIME_BELONGS_TO: "mx-mime-belongs-to",
   AI_MX_MIME_PART_IN: "mx-mime-part-in",
   AI_MX_MIME_MISC: "mx-mime-misc",
   AI_MX_ENVELOPE_SENDER: "mx-envelope-sender",
   AI_MX_MIME_FILE_NAME: "mx-mime-file-name",
-  AI_MX_REFUSE_IMPORT: "mx-refuse-import",
   AI_ELISP_CLIENT_READ_FAQ: "elisp-client-read-faq",
   AI_ELISP_CLIENT_REJECTED_RECOMMENDATION: "elisp-client-rejected-recommendation",
 }

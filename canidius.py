@@ -21,10 +21,32 @@
 # This is not a product yet.
 #
 
+#
+# Python 2.3 probably required
+#
+
 AGENT_PERSON = "Pontus Testperson"
 KOMSERVER = "kom.lysator.liu.se"
 logfile = open("/tmp/canidius.log", 'a')
-               
+DEFAULT_PORT = '5222'
+DEFAULT_RESOURCE = 'LysKOM'
+
+# Client specific aux items
+
+AI_CAN_CONF_MESSAGE = 10300
+# AI to set on persons using the service. Data should be a text number containing a
+# configuration message.
+
+AI_CAN_THREAD = 10301
+# Data should be a thread ID
+
+AI_CAN_FROM = 10302
+# Data should be a (unstripped) jabber userid
+
+AI_CAN_TO = 10303
+# Data should be a (unstripped) jabber userid
+
+
 import sys
 
 # Can we get around this somehow?
@@ -33,7 +55,8 @@ if hasattr(sys,'setdefaultencoding'):
     sys.setdefaultencoding("latin-1")
 else:
     print "Warning: Can't change system default encoding, unsupported operation!"
-    
+
+import socket
 import jabber
 import kom
 import os
@@ -53,7 +76,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.2 2004/11/30 10:35:21 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.3 2004/12/01 15:53:26 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -118,7 +141,7 @@ class komtext:
         if self.thread:
             def rightthread(ts):
                 for p in ts.aux_items:
-                    if p.tag == kom.AI_MX_MESSAGE_ID and p.data == '<%s>' % self.thread:
+                    if p.tag == AI_CAN_THREAD and p.data == '%s' % self.thread:
                         return 1
 
             possible_texts = messages_satisfying( rightthread )
@@ -188,11 +211,11 @@ def parse_configmessage(text, report=0):
 
     if 'server' in sp and 'userid' in sp and 'password' in sp:
         if not 'port' in sp:
-            conf['port'] = 5222
+            conf['port'] = DEFAULT_PORT
         if not 'resource' in sp:
-            conf['resource'] = 'Lyskom'
+            conf['resource'] = DEFAULT_RESOURCE
         if not 'skip_resources' in sp:
-            conf['skip_resources'] = 'Lyskom'
+            conf['skip_resources'] = ''
 
         if not 'letters_only' in sp:
             conf['letters_only'] = 0
@@ -238,36 +261,27 @@ def messages_satisfying(testfunc):
 
     
 def configmessage(person_no):
+    
+    try:
+        textno = 0
 
-    def right_author_and_recpt(ts):
-        # TODO: Allow for setting a private aux-item on the person to point
-        # to configuration message. Also only check messages marked with
-        # a "configuration" aux-item.
-        if ts.author == person_no:
-            for q in ts.misc_info.recipient_list:
-                if person_no == q.recpt:
-                    return 1
+        for p in conn.conferences[person_no].aux_items:
+            if p.tag == AI_CAN_CONF_MESSAGE:
+                textno = int( p.data )
 
-    possible_texts = messages_satisfying( right_author_and_recpt )
-
-    if possible_texts:
-
-        possible_texts.reverse() # Last text first
+        if textno:
         
-        for globtext in possible_texts:
-            
             text = kom.ReqGetText(conn,
-                                  globtext,
-                                  0, conn.textstats[globtext].no_of_chars).response()
+                                  textno,
+                                  0, conn.textstats[textno].no_of_chars).response()
 
             config = parse_configmessage(text)
-                        
+
+            
             if config:
-                #unlock(conn_m)
                 return person(person_no,config)
-
-
-    #unlock(conn_m)
+    except kom.NoSuchText:
+        return
 
 def check_active(person_no):
     return configmessage(person_no)
@@ -281,9 +295,21 @@ class person:
         if conf.has_key('divert_incoming_to'):
             self.me = int(conf['divert_incoming_to'])
 
-        self.jabber = jabber.Client(conf['server'], conf['port'])
-        self.jabber.connect()
-        
+        try:
+            self.jabber = jabber.Client(conf['server'], int(conf['port']) )
+            self.jabber.connect()
+        except socket.error, e:
+            lock(komsendq_m)
+                
+            komsendq.put(kommessage(self.me, l1_e(
+                u"Anslutningen till Jabberservern misslyckades, gissningsvis pga nätverksfel. "
+                u"Felet var '%s' vid anslutning till %s:%s. " 
+                u"Det är rekommenderat att du ger kommandot 'disconnect' för att "
+                u"hamna i ett känt tillstånd."
+                % (e.args[1], str(conf['server']), str(conf['port']) ) )))
+            unlock(komsendq_m)
+            return
+            
         self.jabber.registerHandler('message',self.got_message)
         self.jabber.registerHandler('presence',self.got_presence)
         self.jabber.registerHandler('iq',self.got_iq)
@@ -393,7 +419,7 @@ class person:
 
         if thread:
             msg.setThread(thread)
-        
+
         self.jabber.send(msg)
         unlock(self.mutex)
         
@@ -438,7 +464,9 @@ class person:
         lock(komsendq_m)
                 
         komsendq.put(kommessage(self.me, l1_e(
-            u"Jabberanslutning försvann, gissningsvis pga nätverksfel")))
+            u"Jabberanslutning försvann, gissningsvis pga nätverksfel. "
+            u"Det är rekommenderat att du ger kommandot 'disconnect' för att "
+            u"hamna i ett känt tillstånd. ")))
         unlock(komsendq_m)
 
         self.alive = 0
@@ -492,8 +520,8 @@ class person:
 
                 if m.getThread():
                     # TODO: Should really use private aux-items
-                    aient = kom.AuxItem(kom.AI_MX_MESSAGE_ID)
-                    aient.data = u"<%s>" % m.getThread()
+                    aient = kom.AuxItem(AI_CAN_THREAD)
+                    aient.data = u"%s" % m.getThread()
                     aient.flags.inherit = 1
                     ai.append(aient)
 
@@ -501,13 +529,20 @@ class person:
                 aient.data = u"text/plain;charset=utf-8"
                 ai.append(aient)
 
-
                 aient = kom.AuxItem(kom.AI_MX_FROM)
-                aient.data = m.getFrom().getStripped()
+                aient.data = u"%s" % m.getFrom().getStripped()
+                ai.append(aient)
+
+                aient = kom.AuxItem(AI_CAN_FROM)
+                aient.data = u"%s" % m.getFrom()
                 ai.append(aient)
 
                 aient = kom.AuxItem(kom.AI_MX_TO)
-                aient.data = m.getTo().getStripped()
+                aient.data = u"%s" % m.getTo().getStripped()
+                ai.append(aient)
+
+                aient = kom.AuxItem(AI_CAN_TO)
+                aient.data = u"%s" % m.getTo()
                 ai.append(aient)
 
 
@@ -632,6 +667,8 @@ def disconnect_handler( msg, conn, p, pers_no ):
     lock(sessdict_m)
     del sessdict[pers_no]
     unlock(sessdict_m)
+
+    kommessage(pers_no, l1_e( u"Anslutningen är nerkopplad.")).send(conn)
     return 0
 
 def ping_handler( msg, conn, p, pers_no=0 ):
@@ -697,23 +734,11 @@ def async_message( msg, conn ):
         c = check_active(msg.sender)
 
         if c: 
-            lock(threaddict_m)
-            if msg.sender not in threaddict.keys():
-                # Should always be the case.
-                threaddict[msg.sender]=c
-            unlock(threaddict_m)
-
-            lock(sessdict_m)
-            whoison = filter(lambda x: x.person == msg.sender,
-                             kom.ReqWhoIsOnDynamic(conn).response())
-            sessions = map( lambda x: x.session, whoison)
-            sessdict[msg.sender]=[sessions]
-
-            unlock(sessdict_m)
-
+            notice_person( c, msg.sender, conn )
+            
             kommessage( msg.sender, l1_e(
                 u"Nu har jag registrerat att du är här (visste jag inte förut).")).send(conn)
-
+        
             # Begin and handle the message from the beginning
             async_message(msg,conn)
 
@@ -723,9 +748,18 @@ def async_message( msg, conn ):
 
 
 
-
-
     return
+
+
+
+def async_new_recipient( m, conn ):
+    if m.conf_no == daemon_person: # Ignore if we're not the new one
+        class my_new_text:
+            def __init__(self, text_no):
+                self.text_no = text_no
+                self.text_stat = conn.textstats[text_no]
+        async_new_text( my_new_text(m.text_no), conn )
+        
 
 def async_new_text( m, conn ):
 
@@ -769,8 +803,10 @@ def async_new_text( m, conn ):
         for q in ts.aux_items:
             if q.tag == kom.AI_MX_TO:
                 to = q.data
-            elif q.tag == kom.AI_MX_MESSAGE_ID:
-                thread = q.data[1:-1]
+            elif q.tag == AI_CAN_TO:
+                to = q.data
+            elif q.tag == AI_CAN_THREAD:
+                thread = q.data
 
         # Check comments if we found nothing.
         if not to:
@@ -778,10 +814,12 @@ def async_new_text( m, conn ):
                 try:
                     if conn.textstats[p.text_no].author == daemon_person:
                         for q in conn.textstats[p.text_no].aux_items:
+                            if q.tag == AI_CAN_FROM:
+                                to = q.data
                             if q.tag == kom.AI_MX_FROM:
                                 to = q.data
-                            elif q.tag == kom.AI_MX_MESSAGE_ID:
-                                thread = q.data[1:-1]
+                            elif q.tag == AI_CAN_THREAD:
+                                thread = q.data
                 except kom.NoSuchText:
                     pass
             
@@ -826,47 +864,71 @@ def async_login( p, conn ):
 
     if p.person_no and p.session_no:
 
-        c = check_active(p.person_no)
+        c = None
+        
+        lock(threaddict_m)
+        if p.person_no not in threaddict.keys():
+            c = check_active( p.person_no )
+        unlock(threaddict_m)
 
-        if c:
-            lock(sessdict_m)
-            if p.person_no in sessdict.keys():
-                sessdict[p.person_no].append(p.session_no)
-            else:
-                sessdict[p.person_no]=[p.session_no]
-            unlock(sessdict_m)
-            
-            lock(threaddict_m)
-            if p.person_no not in threaddict.keys():
-                threaddict[p.person_no]=c
-            unlock(threaddict_m)
-            
+        notice_person( c, p.person_no, conn )            
 
 
 def async_logout( p, conn ):
 
     if p.person_no and p.session_no:
- 
-        lock(sessdict_m)
-               
-        if p.person_no in sessdict.keys() and \
-               p.session_no in sessdict[p.person_no]:
-            sessdict[p.person_no].remove(p.session_no)
 
+        lock(sessdict_m)
+        # User we care about?
+
+        if sessdict.has_key(p.person_no):
+            # Yes, update view.
+
+            unlock(sessdict_m)
+            notice_person( None, p.person_no, conn )
+            lock(sessdict_m)
+                               
             if not sessdict[p.person_no]:
                 lock(threaddict_m)
-                threaddict[p.person_no].logout()
-                del threaddict[p.person_no]
+                if threaddict.has_key(p.person_no):
+                    threaddict[p.person_no].logout()
+                    del threaddict[p.person_no]
                 del sessdict[p.person_no]
                 unlock(threaddict_m)
                                          
         unlock(sessdict_m)
-      
+
+
+def notice_person( pers, pers_no, conn, oncache=None ):
+    lock(threaddict_m)
+
+    if pers and pers_no not in threaddict.keys():
+        # Should always be the case.
+        if not threaddict.has_key( pers_no ):
+            threaddict[ pers_no ] = pers
+
+    unlock(threaddict_m)
+
+    if not oncache:
+        oncache = kom.ReqWhoIsOnDynamic(conn).response()
+        
+    whoison = filter(lambda x: x.person == pers_no, oncache )                             
+    sessions = map( lambda x: x.session, whoison)
+
+    lock(sessdict_m)
+        
+    sessdict[pers_no]=sessions
+
+    unlock(sessdict_m)
+
+
 
 
 log( "Canidius started" )
         
 conn_m = mutex.mutex()
+lock(conn_m)
+
 conn = kom.CachedConnection(KOMSERVER, 4894)
 
 
@@ -883,10 +945,13 @@ conn.add_async_handler(kom.ASYNC_SEND_MESSAGE, async_message)
 conn.add_async_handler(kom.ASYNC_LOGOUT, async_logout)
 conn.add_async_handler(kom.ASYNC_LOGIN, async_login)
 conn.add_async_handler(kom.ASYNC_NEW_TEXT, async_new_text)
+conn.add_async_handler(kom.ASYNC_NEW_RECIPIENT, async_new_recipient)
+
 
 kom.ReqAcceptAsync(conn, [kom.ASYNC_SEND_MESSAGE,]).response()
 kom.ReqAcceptAsync(conn, [kom.ASYNC_LOGOUT,
                           kom.ASYNC_SEND_MESSAGE,
+                          kom.ASYNC_NEW_RECIPIENT,
                           kom.ASYNC_NEW_TEXT,
                           kom.ASYNC_LOGIN
                           ]).response()
@@ -895,11 +960,30 @@ kom.ReqSetClientVersion(conn, "Canidius %s", VERSION)
 
 lastkeys=[]
 
+
+
+onnow = kom.ReqWhoIsOnDynamic(conn).response()
+persons = map( lambda x:x.person, onnow )
+persons.sort()
+
+# Remove duplicates
+
+persons = [persons[0]] + [persons[i] for i in range(1, len(persons))
+                          if persons[i] != persons[i - 1]]
+
+
+for p in persons:
+    c = check_active( p )
+
+    if c: 
+        notice_person( c, p, conn, onnow )
+unlock(conn_m)
+
+
 while 1:
 
     lock(conn_m)
     conn.parse_present_data()
-
 
     lock(komsendq_m)                
     try:

@@ -154,7 +154,7 @@ class Gazonk:
         self.time_last_action = time.time()
 
     def set_current_time(self):
-        self.current_time = time.time()
+        self.current_time = ct
 
     def create_guess_list_string(self, max_nr = MAX_ENTRIES_GUESS_LIST):
         message = ""
@@ -1030,14 +1030,17 @@ msleep = MAX_SLEEP_TIME
 while 1:
     select.select([conn.socket], [], [], msleep)
     msleep = MAX_SLEEP_TIME
-    if gaz.current_time >= 0.0:
-        ct = time.time()
-        if GAZ_SLEEP_HOURS.count(time.localtime().tm_hour) > 0:
-            gaz.time_last_action += ct - gaz.current_time
-            msleep = MAX_SLEEP_TIME_NIGHT
+    ct = time.time()
+    is_night = GAZ_SLEEP_HOURS.count(time.localtime(ct).tm_hour) > 0:
+    if gaz.current_time >= 0.0 and is_night:
+        gaz.time_last_action += ct - gaz.current_time
     gaz.set_current_time()
     conn.parse_present_data()
     gaz.check_clues()
     gaz.check_monthly()
+    if gaz.current_time >= 0.0 and is_night:
+        ct = time.time()
+        gaz.time_last_action += ct - gaz.current_time
+        msleep = MAX_SLEEP_TIME_NIGHT
     gaz.set_current_time()
     cPickle.dump(gaz, open(DUMPFILE, 'w'), DUMPBIN)

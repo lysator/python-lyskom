@@ -76,7 +76,7 @@ Om du är Gazonk:
       om du har många ledtrådar kan en kortare tid passa bättre. Detta
       gör du med kommandot 'tidsintervall <antal>[hms]' där h står för
       timmar, m för minuter och s för sekunder. Detta går också att
-      återställla till det normala värdet genom kommandor 'återställ
+      återställa till det normala värdet genom kommandor 'återställ
       tidsintervall'.
 
    9. Om du blivit gazonk, men egentligen inte vill vara det kan du använda

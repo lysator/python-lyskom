@@ -1,0 +1,141 @@
+#!/usr/bin/python
+# LysKOM Protocol A version 10 client interface for Python
+# $Id: komgraph,v 1.1 1999/07/16 23:12:33 kent Exp $
+# (C) 1999 Kent Engström. Released under GPL.
+
+import kom
+import komparam
+import sys
+import getopt
+import string
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error/sucess reporting
+exit_code = 0
+def error(str, code = 2, exit_now = 0):
+    global exit_code
+    exit_code = max(exit_code, code)
+    sys.stderr.write("ERROR: " + str + "\n")
+    if exit_now:
+        exit()
+        
+def success(str):
+    sys.stderr.write("OK: " + str + "\n")
+
+def exit():
+    sys.exit(exit_code)
+
+# VCG quote
+def vcg_quote(str):
+    res = []
+
+    for c in str:
+        oc = ord(c)
+        if oc >= 128 or c == '"':
+            res.append("\\fi%d" % oc)
+        else:
+            res.append(c)
+    return string.join(res,"")
+
+# MAIN GRAPHER
+
+class Graph:
+    def __init__(self, root_str):
+        self.root = string.atoi(root_str)
+        self.visited = {}
+                      
+    def visit(self, text_no):
+        if self.visited.has_key(text_no):
+            return
+        try:
+            text_stat = conn.textstats[text_no]
+            self.show_existing_text(text_no, text_stat)
+
+            for comment_in in text_stat.misc_info.comment_in_list:
+                follow = self.show_comment(text_no, text_stat, comment_in)
+                if follow:
+                    self.visit(comment_in.text_no)
+
+        except "":
+            self.show_missing_text(text_no)
+
+class VcgGraph(Graph):
+    def walk(self):
+        print 'graph: {'
+        print '  title: "KOM GRAPH"'
+        self.visit(self.root)
+        print "}"
+
+    def show_existing_text(self, text_no, text_stat):
+        lines = string.split(kom.ReqGetText(conn,
+                                            text_no,
+                                            0, text_stat.no_of_chars).response(),
+                             "\n")
+        subj = lines[0]
+        body = string.join(lines[1:], "\n")
+        
+        label = "%d at %s" % (text_no,
+                              text_stat.creation_time.to_date_and_time())
+        label = label + "\nBy %s" % conn.conf_name(text_stat.author)
+        label = label + "\n%s" % subj
+
+        label = label + "\n\n" + body
+
+        print '  node: {'
+        print '    title: "%d"' % text_no
+        print '    label: "%s"' % vcg_quote(label)
+        print '  }'
+        
+    def show_missing_text(self, text_no):
+        print '  node: {'
+        print '    title: "%d"' % text_no
+        print '    label: "*MISSING*"'
+        print '  }'
+
+    def show_comment(self, text_no, text_stat, comment_in):
+        print '  edge: {'
+        print '    sourcename: "%d"' % text_no
+        print '    targetname: "%d"' % comment_in.text_no
+        print '  }'
+        return 1
+
+# MAIN
+# Connect and log in
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, conn_error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], conn_error))
+    sys.exit(1)
+
+#
+# CHECK FOR OPTIONS
+#
+
+root = None
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   [
+                                       "root=",
+                                       ])
+for (opt, optarg) in options:
+    if opt == "--root":
+        root = optarg
+    else:
+        error("Option %s not handled (internal error)" % opt)
+
+# Choose function
+
+if root is not None:
+    g = VcgGraph(root)
+    g.walk()
+    
+else:
+    error("Choose function")
+
+exit()
+

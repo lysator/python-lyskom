@@ -35,6 +35,8 @@ HACKER SUMMARY
   It has support for MIME, threading and all the nice, new
   aux-items.
 
+  See README.komimportmail.
+
 - rfc1522.py is a helper module that decodes MIME-encoded
   mail header lines.
 

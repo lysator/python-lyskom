@@ -1,0 +1,152 @@
+7984531 2002-02-12 10:15 /145 rader/ Zoran (Errare humanum est)
+...
+Ärende: Mailimport till LysKOM
+------------------------------------------------------------
+Använd den här, den är den senaste...
+
+Installation instruction for komimportmail
+------------------------------------------
+
+1) Index:
+---------
+        1)Index 
+                (this index)
+        2)Preamble
+        3)Requirements 
+                (files required for getting everything working)
+        4)Installation of komimportmail 
+                (instructions for installation of python-modules and scripts)
+        5)Configuration of Postfix
+                (instructions for configuration of Posftix)
+
+
+2) Preamble:
+------------
+In this mini-howto the following facts will be assumed in my examples:
+* hostname will be komimport (change that to your hostname)
+* domainname will be servers.example.com (change that to your domainname)
+* Postfix configuration files reside in /etc/postfix (change that to your path)
+* user that will be used for actual forwarding of mail to kom is komimporter
+        (change that to an existing user on your system)
+* path where komimportmail is installed is /usr/local/Komimport/bin 
+        (change that to an existing directory)
+* path where komimportmail will write temporary files is /usr/local/Komimport
+        (change that to an existing directory, note that the above user has to
+        have write permissions to that directory)
+* user number on Lyskom server is 50 and username is Mailman
+        (change that to an existing user number)
+* Python is installed in /usr/local/python-2.0
+
+3) Requirements:
+----------------
+        Python 1.5.2 or later
+
+        python-kom-modules:
+                kom.py
+                rfc1522.py
+                rfc822.py
+                lockinghelve.py
+                komimportmail_config.py
+        komimportmail
+        Postfix*
+
+*Note:
+It is possible to install komimportmail with Sendmail too but this 
+installation manual covers only the case with Postfix.
+
+4) Installation of komimportmail:
+---------------------------------
+
+In order to save you a lot of work searching for errors in case of
+trouble you should first of all verify your Postfix installation. Try
+to send a mail for exa mple to
+someuser@komimport.servers.example.com and se if it gets where it
+should.
+
+
+Place python-kom-modules into python's site-modules directory or to
+directory where komimportmail is, that is
+/usr/local/Komimport/bin. On my system it's
+/usr/local/python-2.0/lib/python-2.0/site-packages
+
+Copy komimportmail_config_template.py to komimportmail_config.py and
+edit it  to contain right kom-person number. Kom-person is the actual
+person from KOM  that is going to import mail to KOM. It is
+recomended that you use a dedicated person for importing mail.  It
+has to be already existing account. Edit even password field for that
+person. Configure where komimportmail will place its logs and work
+files.  On my system I use /usr/local/Komimport
+
+Change KOMSERVER variable to your LysKOM-server hostname.
+
+My variables that I changed look like this:
+
+KOMSERVER = "kom.servers.example.com"     # Name or IP address
+KOMPORT = 4894              # Port number
+KOMPERSON = 50           # LysKOM person number
+KOMPASSSWORD = "xxxxxx"      # Password of 
+LOG_FILE = "/usr/local/Komimport/maillog"
+ID_DB_FILE = "/usr/local/Komimport/message-id"
+
+
+
+Put komimportmail to a destination directory. On my system it is
+"/usr/local/Komimport/bin"
+
+Following step is optional but I recomend using dedicated user.
+Create user that will be used for forwarding mail to kom-server. I
+use user "komimporter".
+
+Try to run komimportmail manually to import mail from textfile.  Note
+that the textfile should contain an e-mail containing all e-mail
+headers.  "/usr/local/Komimport/bin/komimportmail [sender]
+[conference] < mail.txt"
+
+If it works fine go on configuring postfix.
+
+5) Configuration of Postfix:
+----------------------------
+
+
+/etc/postfix/main.cf should contain following entry
+
+transport_maps = dbm:/etc/postfix/transport
+
+
+
+/etc/postfix/master.cf should contain following entry
+
+komqueue unix   -       n       n       -       -       pipe
+        flags=R user=komimporter
+argv=/usr/local/Komimport/bin/komimportmail $se nder $user
+
+
+/etc/postfix/transport should contain following entry
+
+komimport.servers.example.com   komqueue:
+
+
+"komqueue" is a name of your mail-queue. It can be any string but the
+same strin g must appear in both transport and master.cf file.
+"komimport.servers.example.com" is a name of your domain that you
+will be sendin g your mail to.  For me it is the same as fully
+qualified hostname for the machine that  forwards mail.
+
+
+Rebuild the transport file with postfix command postmap
+
+# postmap /etc/postfix/transport
+
+
+Then restart postfix itself.
+
+# postfix reload
+
+Now the things should be working. You can try sending mail to:
+<conference-number>@komimport.servers.example.com
+where <conference-number> is the number of existing conference.
+
+If you still can't get stuff working you can join conference
+"python-lyskom (-) KOM-modul för Python" on kom.lysator.liu.se
+and ask for help.
+(7984531) /Zoran (Errare humanum est)/----(Ombruten)

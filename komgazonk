@@ -1445,9 +1445,9 @@ def get_next_clue_time(start_time, time_interval, amount, nasta = 0):
 
 # Gör en snygg tabell (eventuellt flera) av diverse resultat.
 def write_table(table, desc):
-    ntable = [(-reduce((lambda x, y: x+y), v),[-x for x in v],d) for d,v in table]
+    ntable = [([-x for x in v],d,-reduce((lambda x, y: x+y), v)) for d,v in table]
     ntable.sort()
-    table = [(d,[-x for x in v],-s) for s,v,d in ntable]
+    table = [(d,[-x for x in v],-s) for v,d,s in ntable]
 
     max_length = max([len(desc)] + [len(d) for d,v,s in table])
     h_num = max([len(v) for d,v,s in table])

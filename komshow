@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komshow,v 1.4 1999/10/14 10:23:19 kent Exp $
+# $Id: komshow,v 1.5 2002/09/26 18:27:09 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom
@@ -10,7 +10,7 @@ import getopt
 import string
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.4 $"
+vc_revision = "$Revision: 1.5 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -209,47 +209,10 @@ def show_conference(conf_name, person):
                                include_no = 1)))
 
 
-aux_item_names = {
-    kom.AI_CONTENT_TYPE: "CONTENT_TYPE",
-    kom.AI_FAST_REPLY: "FAST_REPLY",
-    kom.AI_CROSS_REFERENCE: "CROSS_REFERENCE",
-    kom.AI_NO_COMMENTS: "NO_COMMENTS",
-    kom.AI_PERSONAL_COMMENT: "PERSONAL_COMMENT",
-    kom.AI_REQUEST_CONFIRMATION: "REQUEST_CONFIRMATION",
-    kom.AI_READ_CONFIRM: "READ_CONFIRM",
-    kom.AI_REDIRECT: "REDIRECT",
-    kom.AI_X_FACE: "X_FACE",
-    kom.AI_ALTERNATE_NAME: "ALTERNATE_NAME",
-    kom.AI_PGP_SIGNATURE: "PGP_SIGNATURE",
-    kom.AI_PGP_PUBLIC_KEY: "PGP_PUBLIC_KEY",
-    kom.AI_E_MAIL_ADDRESS: "E_MAIL_ADDRESS",
-    kom.AI_FAQ_TEXT: "FAQ_TEXT",
-    kom.AI_CREATING_SOFTWARE: "CREATING_SOFTWARE",
-    kom.AI_MX_AUTHOR: "MX_AUTHOR",
-    kom.AI_MX_FROM: "MX_FROM",
-    kom.AI_MX_REPLY_TO: "MX_REPLY_TO",
-    kom.AI_MX_TO: "MX_TO",
-    kom.AI_MX_CC: "MX_CC",
-    kom.AI_MX_DATE: "MX_DATE",
-    kom.AI_MX_MESSAGE_ID: "MX_MESSAGE_ID",
-    kom.AI_MX_IN_REPLY_TO: "MX_IN_REPLY_TO",
-    kom.AI_MX_MISC: "MX_MISC",
-    kom.AI_MX_ALLOW_FILTER: "MX_ALLOW_FILTER",
-    kom.AI_MX_REJECT_FORWARD: "MX_REJECT_FORWARD",
-    kom.AI_NOTIFY_COMMENTS: "NOTIFY_COMMENTS",
-    kom.AI_FAQ_FOR_CONF: "FAQ_FOR_CONF",
-
-    # Experimental items
-    kom.AI_MX_MIME_MISC: "MX_MIME_MISC",
-    kom.AI_MX_MIME_BELONGS_TO: "MX_MIME_BELONGS_TO",
-    kom.AI_MX_MIME_PART_IN: "MX_MIME_PART_IN",
-    kom.AI_MX_ENVELOPE_SENDER: "MX_ENVELOPE_SENDER",
-    kom.AI_MX_MIME_FILE_NAME: "MX_MIME_FILE_NAME",
-    }
 
 def aux_item_description(tag_no):
-    if aux_item_names.has_key(tag_no):
-        return "%s (%d)" % (aux_item_names[tag_no], tag_no)
+    if kom.aux_item_number_to_name.has_key(tag_no):
+        return "%s (%d)" % (kom.aux_item_number_to_name[tag_no], tag_no)
     else:
         return "%d" % tag_no
     

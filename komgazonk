@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.3"
+VERSION="0.3.4"
 
 INVISIBLE = 1
 
@@ -137,7 +137,7 @@ class Gazonk:
     re_satt_in_ledtrad = re.compile("^s[Ää]tt in ledtr[Åå]d +([0-9]+) +(.+)$", re.IGNORECASE)
     re_ta_bort_ledtrad = re.compile("^ta bort ledtr[Åå]d +([0-9]+)$", re.IGNORECASE)
     re_gissningar = re.compile("^gissningar *([0-9]*|personer)$", re.IGNORECASE)
-    re_tidsintervall = re.compile("^tidsintervall *([0-9]*)([hms]) *$", re.IGNORECASE)
+    re_tidsintervall = re.compile("^tidsintervall *([0-9]*) *([hms]) *$", re.IGNORECASE)
     re_ater_tidsintervall = re.compile("^[Åå]terst[Ää]ll tidsintervall$", re.IGNORECASE)
     re_gissa = re.compile("^[Gg][Ii][Ss][Ss][Aa] *(.*) *$")
     re_vem = re.compile("^vem$", re.IGNORECASE)
@@ -598,12 +598,14 @@ class Gazonk:
                     ti_format = format_hms(self.current_time_interval, 2)
                     send_message("Tidsintervallet är nu %s mellan varje ledtråd." % ti_format, \
                                  msg.sender)
-                    gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
-                    subject = "%s gazonkar" % shorten_name(gaz_name)
-                    message = "Tidsintervallet melan ledtrådar har ändrats och \när nu %s\n\n" % \
-                              ti_format
-                    message += self.create_next_clues_string()
-                    self.send_letter(subject, message, GAZONK_CONF, 0, 0)
+                    # Sänd ett brev om en gazonk-omgång pågår.
+                    if self.current_clue > -1:
+                        gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                        subject = "%s gazonkar" % shorten_name(gaz_name)
+                        message = "Tidsintervallet mellan ledtrådar har ändrats och \när nu %s\n\n" % \
+                                  ti_format
+                        message += self.create_next_clues_string()
+                        self.send_letter(subject, message, GAZONK_CONF, 0, 0)
                 else:
                     send_message("Tidsintervallet är samma som förut. Ingen förändring.", \
                                  msg.sender)

@@ -1074,7 +1074,7 @@ def find_person(person_str):
 # Formattera en tidssträng på ett käckt sätt.
 def format_hms(sec_amount, secs_method = 1):
     (mins, secs) = divmod(sec_amount,60)
-     hours = 0
+    hours = 0
     if mins >= 60:
         (hours, mins) = divmod(mins,60)
 

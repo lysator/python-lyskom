@@ -429,7 +429,7 @@ class Gazonk:
                 send_message("Du är nu ny gazonk!", msg.sender)
                 return
             else:
-                send_message("Någon är redan gazonk, så du kan inte bli det!");
+                send_message("Någon är redan gazonk, så du kan inte bli det!", msg.sender);
                 return
 
         # Saker som endast nuvarande gazonk får göra:

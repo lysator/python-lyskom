@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.14 1999/10/18 10:24:51 kent Exp $
+# $Id: kom.py,v 1.15 2001/01/02 09:35:37 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -1080,16 +1080,28 @@ async_dict = {
 # TIME
 
 class Time:
-    def __init__(self):
-        self.seconds = 0
-        self.minutes = 0
-        self.hours = 0
-        self.day = 0
-        self.month = 0
-        self.year = 0
-        self.day_of_week = 0
-        self.day_of_year = 0
-        self.is_dst = 0
+    def __init__(self, ptime = None):
+        if ptime is None:
+            self.seconds = 0
+            self.minutes = 0
+            self.hours = 0 
+            self.day = 0
+            self.month = 0 # 1 ... 12
+            self.year = 0 # no of years since 1900
+            self.day_of_week = 0 # 0 = Sunday ... 6 = Saturday
+            self.day_of_year = 0 # 0 ... 365
+            self.is_dst = 0
+        else:
+            (dy,dm,dd,th,tm,ts, wd, yd, dt) = time.localtime(ptime)
+            self.seconds = ts
+            self.minutes = tm
+            self.hours = th
+            self.day = dd
+            self.month = dm -1 
+            self.year = dy - 1900 
+            self.day_of_week = (wd + 1) % 7
+            self.day_of_year = yd - 1
+            self.is_dst = dt
 
     def parse(self, c):
         self.seconds = c.parse_int()
@@ -1114,6 +1126,17 @@ class Time:
             self.day_of_year, # ignored by server
             self.is_dst)
 
+    def to_python_time(self):
+        return time.mktime((self.year + 1900,
+                            self.month + 1,
+                            self.day,
+                            self.hours,
+                            self.minutes,
+                            self.seconds,
+                            (self.day_of_week - 1) % 7,
+                            self.day_of_year + 1,
+                            self.is_dst))
+                            
     def to_date_and_time(self):
         return "%04d-%02d-%02d %02d:%02d:%02d" % \
             (self.year + 1900, self.month + 1, self.day,
@@ -1298,12 +1321,26 @@ class AuxItem:
         self.inherit_limit = c.parse_int()
         self.data = c.parse_string()
 
+    def __repr__(self):
+        return "<AuxItem %d>" % self.tag
     def to_string(self):
         return "%d %s %d %dH%s" % \
                (self.tag,
                 self.flags.to_string(),
                 self.inherit_limit,
                 len(self.data), self.data)
+
+# Functions operating on lists of AuxItems
+
+def all_aux_items_with_tag(ail, tag):
+    return filter(lambda x, tag=tag: x.tag == tag, ail)
+     
+def first_aux_items_with_tag(ail, tag):
+    all = all_aux_items_with_tag(ail, tag)
+    if len(all) == 0:
+        return None
+    else:
+        return all[0]
      
 # TEXT
 
@@ -1715,7 +1752,8 @@ class Connection:
         self.req_queue = {}  # Requests sent to server, waiting for answers
         self.resp_queue = {} # Answers received from the server
         self.error_queue = {} # Errors received from the server
-        
+        self.req_histo = None # Histogram of request types
+
         # Receive buffer
         self.rb = ""    # Buffer for data received from socket
         self.rb_len = 0 # Length of the buffer
@@ -1748,7 +1786,12 @@ class Connection:
     def register_request(self, req):
         self.req_id = self.req_id +1
         self.req_queue[self.req_id] = req
-        #print "REQUEST %s REGISTERED" % req
+        if self.req_histo is not None:
+            name =  req.__class__.__name__
+            try:
+                self.req_histo[name] = self.req_histo[name] + 1
+            except KeyError:
+                self.req_histo[name] = 1
         return self.req_id
 
     # Wait for a request to be answered, return response or signal error
@@ -1767,6 +1810,18 @@ class Connection:
             (error_no, error_status) = self.error_queue[id]
             del self.error_queue[id]
             raise error_dict[error_no], error_status
+
+    # Enable request histogram
+    def enable_req_histo(self):
+        self.req_histo = {}
+        
+    # Show request histogram
+    def show_req_histo(self):
+        l = map(lambda x: (-x[1], x[0]), self.req_histo.items())
+        l.sort()
+        print "Count  Request"
+        for (negcount, name) in l:
+            print "%5d: %s" % (-negcount, name)
     
     # PARSING SERVER MESSAGES
 
@@ -1976,16 +2031,18 @@ class Connection:
 #   Some automatic invalidation (if accept-async called appropriately).
 #
 # * Lookup function (conference/person name -> numbers)
+# * Helper function get_unread_texts to get a list of local and global
+#   numbers of all unread text in a conference for a person
 
 class CachedConnection(Connection):
     def __init__(self, host, port = 4894, user = ""):
         Connection.__init__(self, host, port, user)
 
-        self.uconferences = Cache(self.fetch_uconference)
-        self.conferences = Cache(self.fetch_conference)
-        self.persons = Cache(self.fetch_person)
-        self.textstats = Cache(self.fetch_textstat)
-        self.subjects = Cache(self.fetch_subject)
+        self.uconferences = Cache(self.fetch_uconference, "UConference")
+        self.conferences = Cache(self.fetch_conference, "Conference")
+        self.persons = Cache(self.fetch_person, "Person")
+        self.textstats = Cache(self.fetch_textstat, "TextStat")
+        self.subjects = Cache(self.fetch_subject, "Subject")
 
         self.add_async_handler(ASYNC_NEW_NAME, self.cah_conference)
         self.add_async_handler(ASYNC_LEAVE_CONF, self.cah_conference)
@@ -2026,6 +2083,15 @@ class CachedConnection(Connection):
         self.textstats.invalidate(msg.text_no)
         self.subjects.invalidate(msg.text_no)
         
+
+    # Report cache usage
+    def report_cache_usage(self):
+        self.uconferences.report()
+        self.conferences.report()
+        self.persons.report()
+        self.textstats.report()
+        self.subjects.report()
+
     # Common operation: get name of conference (via uconference)
     def conf_name(self, conf_no, default = "", include_no = 0):
         try:
@@ -2063,21 +2129,58 @@ class CachedConnection(Connection):
                                      want_confs = want_confs).response()
             return map(lambda x: (x.conf_no, x.name), matches)
 
+
+    #
+    # Get unread texts for a certain person in a certain conference
+    # Return a list of tuples (local no, global no)
+    #
+
+    def get_unread_texts(self, person_no, conf_no):
+        unread = []
+        ms = ReqQueryReadTexts(self, person_no, conf_no).response()
+
+        # Start asking for translations
+        ask_for = ms.last_text_read + 1
+        more_to_fetch = 1
+        while more_to_fetch:
+            try:
+                mapping = ReqLocalToGlobal(self, conf_no,
+                                           ask_for, 255).response()
+                for tuple in mapping.list:
+                    if tuple[0] not in ms.read_texts:
+                        unread.append(tuple)
+                        ask_for = mapping.range_end
+                        more_to_fetch = mapping.later_texts_exists
+            except NoSuchLocalText:
+                # No unread texts
+                more_to_fetch = 0
+
+        return unread
+
 # Cache class for use internally by CachedConnection
 class Cache:
-    def __init__(self, fetcher):
+    def __init__(self, fetcher, name = "Unknown"):
         self.dict = {}
         self.fetcher = fetcher
-        
+        self.cached = 0
+        self.uncached = 0
+        self.name = name
+
     def __getitem__(self, no):
         if self.dict.has_key(no):
+            self.cached = self.cached + 1
             return self.dict[no]
-        self.dict[no] = self.fetcher(no)
-        return self.dict[no]
+        else:
+            self.uncached = self.uncached + 1
+            self.dict[no] = self.fetcher(no)
+            return self.dict[no]
 
     def invalidate(self, no):
         if self.dict.has_key(no):
             del self.dict[no]
-            
-        
+
+    def report(self):
+        print "Cache %s: %d cached, %d uncached" % (self.name,
+                                                    self.cached,
+                                                    self.uncached)
         

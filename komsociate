@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Take apart, and put together. Confuse and enlighten.
-# $Id: komsociate,v 1.1 2001/04/02 20:53:18 kent Exp $
+# $Id: komsociate,v 1.2 2003/03/18 22:25:32 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -25,7 +25,7 @@ import whrandom
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.1 $"
+vc_revision = "$Revision: 1.2 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -79,18 +79,26 @@ def is_punctuation(word):
 # CLASSES FOR RAMBLING
 
 class Dissociator:
-    def __init__(self, overlap = 2, continuation = 3):
+    def __init__(self, overlap = 2, continuation = 3, sentence_mode = 0):
         self.overlap = overlap
         self.continuation = continuation
         self.dict = {}
         self.words = []
+        self.sentence_mode = sentence_mode
 
     def feed_word(self, word):
         # Feed a word at a time, call feed at <EOT>
-        self.words.append(word)
         if word == "<EOT>":
+            self.words.append(word)
             self.feed(self.words)
             self.words = []
+        elif sentence_mode and word in [".", "!", "?"]:
+            self.words.append(word)
+            self.words.append("<EOT>")
+            self.feed(self.words)
+            self.words = []
+        else:
+            self.words.append(word)
 
     def feed(self, wordlist):
         for i in range(0,len(wordlist) - self.overlap + 1):
@@ -226,6 +234,7 @@ mark_earlier = 0
 mark_processed = 0
 exclude_self = 0
 debug = 0
+sentence_mode = 0
 
 MODE_BOTH = 0
 MODE_DUMP_WORDS = 1
@@ -252,6 +261,7 @@ options, arguments = getopt.getopt(param.get_arguments(),
                                     "dump-words",
                                     "read-words",
                                     "texts=",
+                                    "sentence-mode",
                                     ])
 
 for (opt, optarg) in options:
@@ -293,6 +303,8 @@ for (opt, optarg) in options:
         mode = MODE_READ_WORDS        
     elif opt == "--texts":
         texts = int(optarg)
+    elif opt == "--sentence-mode":
+        sentence_mode = 1
 
     else:
         error("Option %s not handled (internal error)" % opt, exit_now = 1)
@@ -303,7 +315,7 @@ if conference is None:
 # For MODE_BOTH and MODE_DUMP_WORDS, we have to read the conference
 if mode in [MODE_BOTH, MODE_DUMP_WORDS]:
     if mode == MODE_BOTH:
-        dissociator = Dissociator()
+        dissociator = Dissociator(sentence_mode = sentence_mode)
         emit_function = dissociator.feed_word
     else:
         emit_function = lambda w: sys.stdout.write(w + "\n")
@@ -319,7 +331,7 @@ if mode in [MODE_BOTH, MODE_DUMP_WORDS]:
 
 # For MODE_READ_WORDS, we have to read the words from stdin
 if mode == MODE_READ_WORDS:
-    dissociator = Dissociator()
+    dissociator = Dissociator(sentence_mode = sentence_mode)
     for word in map(string.strip, sys.stdin.readlines()):
         dissociator.feed_word(word)
 

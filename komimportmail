@@ -1,6 +1,6 @@
 #!/usr/bin/python-1.5.2
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.8 1999/07/25 14:40:25 kent Exp $
+# $Id: komimportmail,v 1.9 1999/07/26 12:53:32 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -41,7 +41,7 @@ APPENDIX_COMMENT_TYPE = kom.MIC_COMMENT #or kom.MIC_FOOTNOTE
 # -- CONFIGURATION ENDS HERE ---
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.8 $"
+vc_revision = "$Revision: 1.9 $"
 revision = vc_revision[11:-2]
 
 # Error reporting to stderr and logfile
@@ -391,29 +391,55 @@ def add_recipients(mail, envelope_sender, recipient_list,
             log("Failed (%s) to add conference %d as recipient" % \
                 (sys.exc_info()[0], recipient))
 
-# Convert a list of names to a list of conference numbers
-# Currently, we expect the names to be simple integers, corresponding
-# to the conference number of the conference or person (= letterbox)
-# that should receive the article.
+# Convert a list of recipient names to a list of conference numbers
+# Note that the recipient names should not contain the @ or the domain
+# part of the email address, just the local part.
+#
+# Allowable recipient name formats (in the order they are checked):
+# 
+# 1) An integer. The conference/letterbox corresponding to this
+#    conf_no is the recipient. Note that an invalid integer results
+#    in a miss. No further alternatives are checked.
+#
+# 2) Any other string. Underscores are converted to spaces and the
+#    name looked up using lookup-z-name. If there is exactly one match,
+#    that conference/letterbox is choosen as recipient.
+
 def name_list_to_conf_no_list(name_list):
     conf_no_list = []
     for name in name_list:
-        # Try converting
+
+        # 1) Integer = conf_no
         try:
             conf_no = string.atoi(name)
         except:
-            log("Bad recipient name %s ignored" % name)
-            continue
+            conf_no = None
 
-        # Simple check for existence of conference.
-        try:
+        if conf_no:
+            # We have an integer.
+            # Do a simple existence check and add.
+            try:
                 conf_stat = c.conferences[conf_no]
-        except:
-            log("Recipient %d ignored (conference not found)" % conf_no)
-            continue
+                conf_no_list.append(conf_no)
+                log("Numeric recipient %d seems to be OK" % conf_no)
+            except:
+                log("Numeric recipient %d ignored (conference not found)" % \
+                    conf_no)
+            continue # No other formats will be checked
 
-        conf_no_list.append(conf_no)
-        log("Recipient %d seems to be OK" % conf_no)
+        # 2) Other string = name to look up
+        matches = c.lookup_name(string.replace(name, "_", " "),
+                                want_pers = 1,
+                                want_confs = 1)
+        if len(matches) == 0:
+            log("Name recipient '%s' gave no match" % name)
+        elif len(matches) > 1:
+            log("Name recipient '%s' gave %d matches (ambiguous)" % \
+                (name, len(matches)))
+        else:
+            log("Name recipient '%s' matches %d: '%s'" % \
+                (name, matches[0][0], matches[0][1]))
+            conf_no_list.append(matches[0][0])            
 
     return conf_no_list
         

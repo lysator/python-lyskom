@@ -72,11 +72,21 @@ HACKER SUMMARY
 
 - komwho shows a list of logged in persons.
 
-- komparam.py is a helper module used by the programs above to
+- komparam.py is a helper module used by some of the programs above to
   learn server address, server port, person name/number and password
-  from environment variables and/or a "~/.komrc" file.
+  from environment variables and/or a "~/.komrc" file. DEPRECATED.
+  Use komconnect.py in new programs.
+
+- komconnect.py is a new version of komparam.py that uses the new
+  Python 2.3 optparse module for options processing. Use this module
+  instead of komparam.py.
 
 - komlasttext displays the highest text number of a readble text.
+  DEPRECATED. Use komserverstats instead.
+
+- komserverstats outputs server statistics as reported by the new
+  protocol version 11 get-stats call. It can also display the highest
+  global or local test numbers at the moment.
 
 - komconfwalker.py defines a class ConfTemporalWalker used to walk a
   conference, processing articles written during a specified
@@ -97,11 +107,14 @@ HACKER SUMMARY
 - komgazonk is an interesting program to be used for playing gazonk
   in LysKOM. See README.komgazonk.
 
+- komaux shows and sets arbitrary aux-items on all kinds of objects.
+
+
 COPYRIGHT
 
-  (C) Copyright 1999, 2000, 2002 Kent Engström, Peter Liljenberg, 
-                                 Peter Åstrand, Erik Forsberg,
-                                 Ragnar Ouchterlony.
+  (C) Copyright 1999-2003 Kent Engström, Peter Liljenberg, 
+                          Peter Åstrand, Erik Forsberg,
+                          Ragnar Ouchterlony.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by

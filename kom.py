@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.19 2001/02/15 20:05:30 astrand Exp $
+# $Id: kom.py,v 1.20 2001/03/16 20:58:56 astrand Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -2215,6 +2215,14 @@ class CachedUserConnection(CachedConnection):
             if (ms.priority != 0) and (not ms.type.passive):
                 result.append(ms.conference)
         return result
+
+    def is_unread(self, conf_no, local_no):
+        if local_no <= self.memberships[conf_no].last_text_read:
+            return 0
+        elif local_no in self.memberships[conf_no].read_texts:
+            return 0
+        else:
+            return 1
         
     def fetch_membership(self, no):
         return ReqQueryReadTexts(self, self.user_no, no).response()
@@ -2250,7 +2258,8 @@ class CachedUserConnection(CachedConnection):
         ts = msg.text_stat
         for rcpt in ts.misc_info.recipient_list:
             if rcpt.recpt in self.member_confs:
-                self.no_unread[rcpt.recpt] = self.no_unread[rcpt.recpt] - 1
+                if self.is_unread(rcpt.recpt, rcpt.loc_no):
+                    self.no_unread[rcpt.recpt] = self.no_unread[rcpt.recpt] - 1
             
     def cah_new_text(self, msg, c):
         CachedConnection.cah_new_text(self, msg, c)
@@ -2270,7 +2279,11 @@ class CachedUserConnection(CachedConnection):
     def cah_sub_recipient(self, msg, c):
         CachedConnection.cah_sub_recipient(self, msg, c)
         if msg.conf_no in self.member_confs:
-            self.no_unread[msg.conf_no] = self.no_unread[msg.conf_no] - 1
+            # To be able to update the cache correct locally, we would
+            # need the texts local number. The only way to get it is
+            # to implement a local-to-global cache and use it
+            # backwards. So, for now, invalidate the cache totally.
+            self.no_unread.invalidate(msg.conf_no)
 
     def cah_new_membership(self, msg, c):
         CachedConnection.cah_new_membership(self, msg, c)

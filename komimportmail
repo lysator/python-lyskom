@@ -1,7 +1,7 @@
 #!/usr/bin/python-1.5.2
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.14 1999/10/12 18:28:01 kent Exp $
+# $Id: komimportmail,v 1.15 1999/10/13 12:47:52 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -17,9 +17,10 @@ import lockingshelve
 import kom
 import os
 from komimportmail_config import *
+import types
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.14 $"
+vc_revision = "$Revision: 1.15 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -37,7 +38,6 @@ EX_NOUSER = 67
 EX_UNAVAILABLE = 69 # Catchall
 EX_TEMPFAIL = 75 # This is the key to making sendmail requeue a mail!
 
-
 # Logging
 
 log_file = None
@@ -54,11 +54,106 @@ def log(line):
         
     log_file.write("%d: %s\n" % (log_pid, line))
 
+# Class to handle Message-ID:s
+
+class MessageIDDb:
+    def __init__(self, filename):
+        self.filename = filename
+        self.db = lockingshelve.LockingShelve(filename) # May raise exc.
+
+    # Return text_no corresponding to Message-ID or
+    # None if the text hasn't been entered yet
+    def get_text_no_from_id(self, id):
+        try:
+            data = self.db[id]
+            if type(data) <> types.TupleType:
+                return None
+            (text_no, added_time_t) = data
+            return text_no
+        except:
+            return None
+
+    # Return list of text_nos wanting to comment a Message-ID or
+    # None if no such data is present
+    def get_texts_commenting(self, id):
+        try:
+            data = self.db[id]
+            if type(data) <> types.ListType:
+                return None
+            return data
+        except:
+            return None
+
+    # Register that Message-ID has been imported as text_no
+    def register_text(self, id, text_no):
+        self.db[id] = (text_no, int(time.time()))
+
+    # Register that Message-ID should be commented by text_no
+    # if it is seen later.
+    def register_link(self, id, text_no):
+        shelf = self.db.exclusive_open()
+        try:
+            try:
+                text_nos = shelf[id]
+            except:
+                text_nos = []
+            if type(text_nos) <> types.ListType:
+                return
+            text_nos.append(text_no)
+            shelf[id] = text_nos
+        finally:
+            self.db.exclusive_close()
+
+    # Garbage collect the Message-ID database
+    def gc_message_id_db(self):
+        log("Garbage collection started")
+        s = self.db.exclusive_open()
+    
+        ctr_left = 0
+        ctr_gone = 0
+        id_list = s.keys()
+        log("Will check %d articles" % (len(id_list)))
+        for id in id_list:
+            data = s[id]
+            if type(data) == types.TupleType:
+                (text_no, created) = data
+                try:
+                    ts = kom.ReqGetTextStat(c, text_no).response()
+                    ctr_left = ctr_left + 1
+                except kom.NoSuchText:
+                    ctr_gone = ctr_gone + 1
+                    log("GC %7d: %s" % (text_no, id))
+                    del s[id]
+            else:
+                print "%s: unknown type, cannot GC" % (id)
+                ctr_left = ctr_left + 1
+                
+        self.db.exclusive_close()
+        log("Garbage collection finished (left: %d, gone: %d)" % \
+                (ctr_left, ctr_gone))
+
+    # Dump Message-ID database
+    def dump(self):
+        s = self.db.shared_open()
+    
+        id_list = s.keys()
+        for id in id_list:
+            data = s[id]
+            if type(data) == types.TupleType:
+                (text_no, created) = data
+                print "%s --> %d" % (id, text_no)
+            elif type(data) == types.ListType:
+                print "%s <== %s" % (id, data)
+            else:
+                print "%s STRANGE DATA" % (id)
+
+        self.db.shared_close()
+
 # Create an article or add recipients to an existing one
 def create_article_or_add_recipients(mail,
                                      envelope_sender,
                                      envelope_recipients):
-    # Get Message-ID
+    # Get Message-ID from mail
     try:
         message_id = mail.headers["Message-ID"]
     except:
@@ -67,12 +162,11 @@ def create_article_or_add_recipients(mail,
     log("Handling mail with Message-ID: %s" % message_id)
 
     # Lookup Message-ID -> Text-No (fails if this is a new mail)
-    try:
-        (existing_text_no, added_time_t) = message_id_db[message_id]
-        log("This is existing article %d" % existing_text_no)
-    except KeyError:
+    existing_text_no = message_id_db.get_text_no_from_id(message_id)
+    if existing_text_no is None:
         log("This mail is new")
-        existing_text_no = None
+    else:
+        log("This is existing article %d" % existing_text_no)
 
     # Map recipient names to conference numbers
     recipient_list = name_list_to_conf_no_list(envelope_recipients)
@@ -96,16 +190,18 @@ def create_article(mail, envelope_sender, envelope_recipients,
 
     # Threading
     
-    parent_text_no = None
     parent_message_id = message_id_of_parent(mail.headers)
     if parent_message_id <> None:
-        try:
-            (parent_text_no, created) = message_id_db[parent_message_id]
+        parent_text_no = message_id_db.get_text_no_from_id(parent_message_id)
+        if parent_text_no is not None:
             log("Comment to %s (article %d)" % \
                 (parent_message_id, parent_text_no))
-        except:
-            log("Comment to %s (which cannot be found in KOM)" % \
+        else:
+            log("Comment to %s (not present in KOM?)" % \
                 (parent_message_id))
+    else:
+        # No threading
+        parent_text_no = None
 
     # MIME multipart handling.  We choose not to preserve the exact
     # hierachical structure of the MIME message itself, as that would
@@ -146,13 +242,31 @@ def create_article(mail, envelope_sender, envelope_recipients,
     if len(sub_text_nos) > 0:
         add_mx_mime_part_in_items(text_no, sub_text_nos)
 
-    # Threading. Register Message-ID -> (Text-No, creation time) mapping.
+    # Threading. If our Message-ID has a list of list of
+    # test-that-wants-to-comment-us attached, process it now
+    # Note that we must to this before entering our
+    # Message-ID -> text_no mapping below.
+
+    texts_commenting_us = message_id_db.get_texts_commenting(message_id)
+    log("TCU: %s" % texts_commenting_us)
+    if texts_commenting_us is not None:
+        add_comment_links(text_no, texts_commenting_us)
+
+    # Threading. Register Message-ID -> our own text_no.
     try:
-        message_id_db[message_id] = (text_no, int(time.time())) 
+        message_id_db.register_text(message_id, text_no)
         log("Message-ID recorded in database.")
     except:
         log("Failed to record Message-ID in database.")
         pass
+
+    # Threading. If we are trying to comment a Message-ID that
+    # is not yet present: register for future threading.
+    if parent_message_id is not None and parent_text_no is None:
+        log("Registering us a a comment to non-present %s" %
+            parent_message_id)
+        message_id_db.register_link(parent_message_id, text_no)
+
 
 # Create article part
 # The "parent" argument tells us if this is the main article or
@@ -398,6 +512,21 @@ def add_recipients(mail, envelope_sender, recipient_list,
             log("Failed (%s) to add conference %d as recipient" % \
                 (sys.exc_info()[0], recipient))
 
+# Add comment links to an article
+def add_comment_links(text_no, commenting_text_nos):
+    # Just loop and try to add the comments, silently
+    # ignoring any errors from the server.
+    for commenting_text_no in commenting_text_nos:
+        try:
+            kom.ReqAddComment(c,
+                              commenting_text_no,
+                              text_no).response()
+            log("Added %s as comment to %d" % (commenting_text_no,
+                                               text_no))
+        except kom.ServerError:
+            log("Failed (%s) to add %d as comment to %d" % \
+                (sys.exc_info()[0], commenting_text_no, text_no))
+
 # Convert a list of recipient names to a list of conference numbers
 # Note that the recipient names should not contain the @ or the domain
 # part of the email address, just the local part.
@@ -488,29 +617,8 @@ def last_message_id_in(header):
     else:
         return None
 
-# Garbage collect the Message-ID database
-def gc_message_id_db():
-    log("Garbage collection started")
-    s = message_id_db.exclusive_open()
+# HANDLING THE MESSAGE-ID-DATABASE
 
-    ctr_left = 0
-    ctr_gone = 0
-    id_list = s.keys()
-    log("Will check %d articles" % (len(id_list)))
-    for id in id_list:
-        (text_no, created) = s[id]
-        try:
-            ts = kom.ReqGetTextStat(c, text_no).response()
-            ctr_left = ctr_left + 1
-        except kom.NoSuchText:
-            ctr_gone = ctr_gone + 1
-            log("GC %7d: %s" % (text_no, id))
-            del s[id]
-            
-    message_id_db.exclusive_close()
-    log("Garbage collection finished (left: %d, gone: %d)" % \
-        (ctr_left, ctr_gone))
-        
 # MAIN
 
 # Arguments:
@@ -519,12 +627,15 @@ def gc_message_id_db():
 #   If just one argument is present, and that is "--gc", then do
 #   a garbage collection of the Message-ID-database.
 
+gc = 0
+dump = 0
 if len(sys.argv) == 2 and sys.argv[1] == "--gc":
     gc = 1
+elif len(sys.argv) == 2 and sys.argv[1] == "--dump":
+    dump = 1
 elif len(sys.argv) < 3:
     error_exit("Wrong number of arguments", EX_USAGE)
 else:
-    gc = 0
     envelope_sender = sys.argv[1]
     envelope_recipients = sys.argv[2:]
 
@@ -542,7 +653,7 @@ except:
 
 # Prepare to use the Message-ID database
 try:
-    message_id_db = lockingshelve.LockingShelve(ID_DB_FILE)
+    message_id_db = MessageIDDb(ID_DB_FILE)
 except:
     # It's a bit too tough luck to be unsubscribed from a lot of
     # mailing lists because of this one
@@ -551,7 +662,10 @@ except:
 # Choose function
 if gc:
     # Function: Garbage collection
-    gc_message_id_db()
+    message_id_db.gc_message_id_db()
+elif dump:
+    # Function: Dump
+    message_id_db.dump()
     
 else:
     # Function: Normal mail handling

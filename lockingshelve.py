@@ -1,5 +1,5 @@
 # Locking version of shelve
-# $Id: lockingshelve.py,v 1.2 1999/07/26 13:29:26 kent Exp $
+# $Id: lockingshelve.py,v 1.3 1999/10/13 12:37:33 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 # NOTE! Just enough for the needs of komimportmail. Use with caution.
 
@@ -49,6 +49,13 @@ class LockingShelve:
             self.__close()
 
     # Use these when you want to use the shelf object directly
+    def shared_open(self):
+        self.__open_read()
+        return self.__shelf
+
+    def shared_close(self):
+        self.__close()
+
     def exclusive_open(self):
         self.__open_write()
         return self.__shelf

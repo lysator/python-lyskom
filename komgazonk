@@ -1457,4 +1457,7 @@ while 1:
     gaz.set_current_time()
     if gaz.is_night:
         msleep = MAX_SLEEP_TIME_NIGHT
-    cPickle.dump(gaz, open(DUMPFILE, 'w'), DUMPBIN)
+    try:
+        cPickle.dump(gaz, open(DUMPFILE, 'w'), DUMPBIN)
+    except:
+        log("Sparning av dumpfil misslyckades")

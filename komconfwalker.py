@@ -1,10 +1,12 @@
 #!/usr/bin/python
 # Virtual classes to walk a conference, e.g. for statistics gathering
-# $Id: komconfwalker.py,v 1.2 2001/03/03 17:39:48 kent Exp $
+# $Id: komconfwalker.py,v 1.3 2001/03/05 22:03:14 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 
 import sys
 import time
+
+import kom
 
 # Needs jddate from the lyspython collection
 import jddate

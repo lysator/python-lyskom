@@ -37,6 +37,7 @@
 @item mx-mime-misc [10102] (text)
 @item mx-envelope-sender [10103] (text)
 @item mx-mime-file-name [10104] (text)
+@item mx-refuse-import [10105] (conference, letterbox)
 @item elisp-client-read-faq [10000] (letterbox)
 @item elisp-client-rejected-recommendation [10001] (letterbox)
 

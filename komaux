@@ -1,0 +1,205 @@
+#!/usr/bin/python
+# LysKOM Protocol A version 10 client interface for Python
+# $Id: komaux,v 1.1 2002/11/07 19:55:12 kent Exp $
+# (C) 1999 Kent Engström. Released under GPL.
+
+#
+# TODO:
+#   Add options to set the flags on created aux-items
+#
+
+import kom
+import komparam
+import sys
+import getopt
+import string
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error/sucess reporting
+def fatal(str):
+    sys.stderr.write("ERROR: " + str + "\n")
+    sys.exit(1)
+        
+#
+# Misc functions
+#
+
+def aux_item_description(tag_no):
+    if kom.aux_item_number_to_name.has_key(tag_no):
+        return "%s (%d)" % (kom.aux_item_number_to_name[tag_no], tag_no)
+    else:
+        return "%d" % tag_no
+
+def aux_item_tag(name):
+    # First try numeric
+    try:
+        tag = int(name)
+        return tag
+    except ValueError:
+        pass
+
+    # Then try matching names in the dictionary
+    for (k, v) in kom.aux_item_number_to_name.items():
+        if v == name:
+            return k
+
+    # Bad luck
+    return None
+
+#
+# Handlers for diffent kind of objects
+#
+
+class Handler:
+    def show_aux_items_common(self, aux_items):
+        if len(aux_items) == 0:
+            print "No aux items."
+            return
+    
+        for ai in aux_items:
+            flags = ""
+            for (letter, flag) in [
+                ("D",ai.flags.deleted),
+                ("I",ai.flags.inherit),
+                ("S",ai.flags.secret),
+                ("H",ai.flags.hide_creator),
+                ("G",ai.flags.dont_garb)]:
+                if flag:
+                    flags = flags + letter
+                else:
+                    flags = flags + "-"
+            
+            print "%3d %s %s %s" % (ai.aux_no,
+                                    flags,
+                                    conn.conf_name(ai.creator,
+                                                   default = "Person #%d",
+                                                   include_no = 1),
+                                    ai.created_at.to_date_and_time())
+            print "    %s" % (aux_item_description(ai.tag))
+            print "    %s" % ai.data
+            print
+
+    def add_aux_item(self, ai_name, data):
+        ai_tag = aux_item_tag(ai_name)
+        if ai_tag is None:
+            fatal("%s -- unknown aux item" % ai_name)
+
+        ai = kom.AuxItem(ai_tag, data)
+        self.modify_aux_item_specific(add = [ai])
+
+    def delete_aux_item(self, ai_pos):
+        self.modify_aux_item_specific(delete = [ai_pos])
+
+class ConferenceHandler(Handler):
+    def __init__(self, name):
+        # Resolve name
+        matches = conn.lookup_name(name, 1, 1)
+        if len(matches) == 0:
+            fatal("%s -- not found" % name)
+        elif len(matches) <> 1:
+            fatal("%s -- ambiguous name" % name)
+
+        (self.conf_no,
+         self.conf_name) = matches[0]
+    
+        self.conf = conn.conferences[self.conf_no]
+
+    def show_aux_items(self):
+        self.show_aux_items_common(self.conf.aux_items)
+
+    def modify_aux_item_specific(self, add = [], delete = []):
+        kom.ReqModifyConfInfo(conn, self.conf_no, delete, add).response()
+
+class TextHandler(Handler):
+    def __init__(self, number):
+        try:
+            self.text_no = int(number)
+            self.text = conn.textstats[self.text_no]
+        except ValueError:
+            fatal("%s -- not found" % number)
+
+    def show_aux_items(self):
+        self.show_aux_items_common(self.text.aux_items)
+
+    def modify_aux_item_specific(self, add = [], delete = []):
+        kom.ReqModifyTextInfo(conn, self.text_no, delete, add).response()
+
+class SystemHandler(Handler):
+    def __init__(self):
+        self.system_info = kom.ReqGetInfo(conn).response()
+
+    def show_aux_items(self):
+        self.show_aux_items_common(self.system_info.aux_item_list)
+
+    def modify_aux_item_specific(self, add = [], delete = []):
+        kom.ReqModifySystemInfo(conn, delete, add).response()
+
+
+# MAIN
+# Connect and log in
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, conn_error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], conn_error))
+    sys.exit(1)
+
+#
+# CHECK FOR OPTIONS
+#
+
+handler = None
+show = 1
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   [
+                                       "conference=",
+                                       "text=",
+                                       "system",
+
+                                       "add=",
+                                       "delete=",
+                                       
+                                       ])
+for (opt, optarg) in options:
+    if opt == "--conference":
+        handler = ConferenceHandler(optarg)
+    elif opt == "--text":
+        handler = TextHandler(optarg)
+    elif opt == "--system":
+        handler = SystemHandler()
+    elif opt == "--add":
+        try:
+            (ai_name,data) = string.split(optarg,"=")
+        except ValueError:
+            fatal("%s -- bad syntax" % optarg)
+        if handler is None:
+            fatal("Specify object before action")
+        handler.add_aux_item(ai_name, data)
+        show = 0
+    elif opt == "--delete":
+        try:
+            ai_pos = int(optarg)
+        except ValueError:
+            fatal("%s -- bad integer" % optarg)
+        if handler is None:
+            fatal("Specify object before action")
+        handler.delete_aux_item(ai_pos)
+        show = 0
+    else:
+        fatal("Option %s not handled (internal error)" % opt)
+
+# Choose function
+
+if handler is None:
+    fatal("Specify object")
+
+if show:
+    handler.show_aux_items()
+
+sys.exit(0)
+

@@ -76,7 +76,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.3 2004/12/01 15:53:26 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.4 2004/12/03 13:19:18 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -162,10 +162,16 @@ class komtext:
 
     
 def lock(m):
+    #if threading.currentThread().getName() == 'MainThread':
+    #    print "Lock"
+    #    traceback.print_stack()
     while not m.testandset():
         time.sleep(0.1)
 
 def unlock(m):
+    #if threading.currentThread().getName() == 'MainThread':
+    #    print "Unlock"
+    #    traceback.print_stack()
     m.unlock()
 
 def parse_configmessage(text, report=0):
@@ -318,6 +324,7 @@ class person:
         self.jabber.auth( conf['userid'], conf['password'], conf['resource'])
         self.jabber.sendPresence(status=conf['startup_status'], show=conf['startup_show'])
 
+        self.mode = 'chat'
         self.alive = 1
 
         log( "%s/%s (person %d) logged in to %s:%s." % (conf['userid'], conf['resource'], person_no,
@@ -384,11 +391,59 @@ class person:
 
         unlock(self.mutex)
 
+    def directto(self,uid):
+        lock(self.mutex)
+        self.mode = 'singlechat'
+        self.dst = uid
+        unlock(self.mutex)
 
 
+    def enter(self,roomname,server,nick):
+        lock(self.mutex)
+        self.mode = 'groupchat'
+        self.dst = u'%s@%s' % (roomname, server)
+        room = u'%s@%s/%s' % (roomname, server, nick)
+        unlock(self.mutex)
+        self.send_presence(to=room)
+        return
+        
+    def leave(self):
+        lock(self.mutex)
+        self.mode = 'chat'
+        unlock(self.mutex)
+
+
+    def handle_message(self,sender,m):
+        
+        lock(self.mutex)
+        currentmode = self.mode
+        unlock(self.mutex)
+
+        if currentmode == 'chat':
+            if -1 == m.find(":"):
+                lock(komsendq_m)
+                komsendq.put( kommessage( sender, l1_e(
+                    u"Du måste ange mottagare följt av kolon innan meddelandet.")))
+                unlock(komsendq_m)
+                return
+
+            to = m[:m.find(":")].strip()
+            tosend = m[m.find(":")+1:].strip()
+
+            self.send_message(to,tosend,type='chat')
+
+        elif currentmode == 'groupchat' or currentmode == 'singlechat':
+            lock(self.mutex)
+            dst = self.dst
+            unlock(self.mutex)
+
+            if currentmode == 'singlechat':
+                currentmode = 'chat'
+
+            self.send_message(to=dst,type=currentmode,m=m)
 
         
-    def send_message(self,to,m,type='chat',subject='',thread=''):
+    def send_message(self,to='',m='',type='chat',subject='',thread=''):
         # We hold conn_m lock already
         # (if we should need it)
 
@@ -407,9 +462,13 @@ class person:
             return
 
         msg = jabber.Message()
-        msg.setBody(m)
-        msg.setTo(dst)
-        msg.setFrom( self.sender_adress )
+
+        if m:
+            msg.setBody(m)
+
+        if to:
+            msg.setTo(dst)
+        msg.setFrom( self.sender_adress() )
 
         if type:
             msg.setType(type)
@@ -445,7 +504,9 @@ class person:
         try:
             if self.conf['skip_resources']:
                 return self.uid_to_alias(s.getStripped())
-            return self.uid_to_alias(s.getStripped())+"/"+s.getResource()
+            if s.getResource():
+                return self.uid_to_alias(s.getStripped())+"/"+s.getResource()
+            return self.uid_to_alias(s.getStripped())
         except AttributeError:
             stripped = s
             su = stripped
@@ -479,15 +540,17 @@ class person:
 
 
     def got_message(self,j,m):
- 
+        # We should have lock for self.mutex
+
         log( "%s got message from %s." % (m.getTo(), m.getFrom()) )
 
-        if not str(m.getFrom().getStripped()) in self.conf['ignore']:
+        if not str(m.getFrom()) in self.conf['ignore'] and \
+           not str(m.getFrom().getStripped()) in self.conf['ignore']:
             sendmsg = 0
             sendletter = 0
                        
-            if  self.conf['messages_only'] or \
-               (not m.getThread() and not  m.getSubject()) and \
+            if self.conf['messages_only'] or \
+               (not m.getThread() and not m.getSubject()) and \
                m.getType() != 'error':                   
                 sendmsg = 1
                 msg = u"Meddelande från %s: %s" % (
@@ -500,6 +563,12 @@ class person:
                     utf8_d(self.msg_sender(m.getFrom())),
                     utf8_d(m.getError()),
                     utf8_d(m.getErrorCode()))
+            elif m.getType() == 'groupchat':
+                sendmsg = 1
+                msg = u"Meddelande från %s: %s" % (
+                    utf8_d(self.msg_sender(m.getFrom())),
+                    utf8_d(m.getBody()))
+
             elif m.getThread() or (not m.getType() and m.getSubject()):
                 sendletter = 1
                 
@@ -675,6 +744,31 @@ def ping_handler( msg, conn, p, pers_no=0 ):
     kommessage(pers_no, l1_e( u"Pong")).send(conn)
     return 0
 
+def enter_handler( msg, conn, p, pers_no=0 ):
+    l = msg.split()
+
+    p.enter(l[0],l[1],l[2])
+    kommessage(pers_no, l1_e( u"Försöker gå in i rummet %s på servern %s som %s (ifall "
+                              u"det inte går måste du ändå lämna rummet för att agera normalt)."
+                              % (
+        l[0],
+        l[1],
+        l[2]))).send(conn)
+    return 0
+
+def direct_handler( msg, conn, p, pers_no=0 ):
+    l = msg.split()
+
+    p.directto(l[0])
+    kommessage(pers_no, l1_e( u"Skickar allt du skriver till %s, ge kommandot lämna för att återgå "
+                              u"till normalt läge." % l[0] )).send(conn)
+    return 0
+
+def leave_handler( msg, conn, p, pers_no=0 ):
+    p.leave()
+    kommessage(pers_no, l1_e( u"Återgår till normalläge." )).send(conn)
+    return 0
+
 
 msg_handlers={'xa':xa_handler,
               'borta ett tag':xa_handler,
@@ -690,6 +784,13 @@ msg_handlers={'xa':xa_handler,
               'disconnect':disconnect_handler,
               'koppla ner':disconnect_handler,
               'ping':ping_handler,
+              'enter':enter_handler,
+              'gå in i':enter_handler,
+              'gå ut ur':leave_handler,
+              'leave':leave_handler,
+              'lämna':leave_handler,
+              'prata med':direct_handler,
+              'direct':direct_handler,
               'status':status_handler
               }
 
@@ -720,16 +821,7 @@ def async_message( msg, conn ):
                     kommessage( msg.sender, l1_e(u"Närvarostatus skickad." )).send(conn)
                 return
 
-        if -1 == text.find(":"):
-            kommessage( msg.sender, l1_e(
-                u"Du måste ange mottagare följt av kolon innan meddelandet.")).send(conn)
-            return
-
-        to = text[:text.find(":")].strip()
-        tosend = text[text.find(":")+1:].strip()
-
-        p.send_message(to,tosend,type='chat')
-        
+        p.handle_message(msg.sender, text)
     else:
         c = check_active(msg.sender)
 
@@ -865,11 +957,13 @@ def async_login( p, conn ):
     if p.person_no and p.session_no:
 
         c = None
-        
+
         lock(threaddict_m)
-        if p.person_no not in threaddict.keys():
-            c = check_active( p.person_no )
+        regged = p.person_no in threaddict.keys()
         unlock(threaddict_m)
+        
+        if not regged:
+            c = check_active( p.person_no )
 
         notice_person( c, p.person_no, conn )            
 
@@ -900,6 +994,8 @@ def async_logout( p, conn ):
 
 
 def notice_person( pers, pers_no, conn, oncache=None ):
+    # We should have conn_m lock
+
     lock(threaddict_m)
 
     if pers and pers_no not in threaddict.keys():

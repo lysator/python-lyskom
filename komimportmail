@@ -1,7 +1,7 @@
 #!/sw/local/bin/python
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.20 2000/07/31 17:34:24 forsberg Exp $
+# $Id: komimportmail,v 1.21 2000/08/17 08:02:11 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -22,7 +22,7 @@ import re
 import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.20 $"
+vc_revision = "$Revision: 1.21 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -429,14 +429,17 @@ def create_article_part(mail,
     if mail.headers.has_key("Date") and not SKIP_AI_MX_DATE:
         parsed_date = rfc822.parsedate_tz(mail.headers["Date"])
         if parsed_date is not None:
-            tz_mins = parsed_date[9] / 60
-            if tz_mins == 0:
-                tz = "+0000"
-            elif tz_mins > 0:
-                tz = "+%02d%02d" % (tz_mins/60, tz_mins % 60)
-            else:
-                tz_mins = -tz_mins
-                tz = "-%02d%02d" % (tz_mins/60, tz_mins % 60)
+            try:
+                tz_mins = parsed_date[9] / 60
+                if tz_mins == 0:
+                    tz = "+0000"
+                elif tz_mins > 0:
+                    tz = "+%02d%02d" % (tz_mins/60, tz_mins % 60)
+                else:
+                    tz_mins = -tz_mins
+                    tz = "-%02d%02d" % (tz_mins/60, tz_mins % 60)
+            except:
+                tz = "-0000" # TZ not known
                 
             date = "%04d-%02d-%02d %02d:%02d:%02d %s" % \
                    (parsed_date[0], parsed_date[1], parsed_date[2],

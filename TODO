@@ -3,7 +3,6 @@ This is an -*- outline -*- file
 THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 
 * komimportmail
-** Add time logging
 ** Check what exit code is used for "already present" (duplication)
 ** Check AI_MX_IN_REPLY_TO semantics (should we include what we really used?)
 ** mail2kom can use recode - should we do that too?

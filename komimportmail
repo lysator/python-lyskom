@@ -2,7 +2,7 @@
 # -*- python -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.30 2002/05/05 12:06:30 kent Exp $
+# $Id: komimportmail,v 1.31 2002/05/05 12:32:26 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -21,9 +21,10 @@ from komimportmail_config import *
 import types
 import re
 import getopt
+import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.30 $"
+vc_revision = "$Revision: 1.31 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -200,6 +201,10 @@ def create_article_or_add_recipients(mail,
                                      envelope_sender,
                                      envelope_recipients,
                                      with_hdr):
+
+    # Log start
+    log("Starting on %s." % time.ctime(time.time()), LOG_INFO)
+
     # Get Message-ID from mail
     try:
         message_id = last_message_id_in(mail.headers["Message-ID"])
@@ -817,13 +822,23 @@ elif function == FUNC_DUMP:
     message_id_db.dump()
 elif function == FUNC_IMPORT_MAIL:
     # Function: Normal mail handling
-    mail = mimereader.Message(sys.stdin)
-    if REMOVE_REDUNDANT_HTML:
-        mail.remove_redundant_html()
-    create_article_or_add_recipients(mail,
-                                     envelope_sender,
-                                     envelope_recipients,
-                                     with_hdr)
+    try:
+        mail = mimereader.Message(sys.stdin)
+        if REMOVE_REDUNDANT_HTML:
+            mail.remove_redundant_html()
+            create_article_or_add_recipients(mail,
+                                             envelope_sender,
+                                             envelope_recipients,
+                                             with_hdr)
+    except:
+        # Log exception to file, instead of showing it in the bounce
+        (t,v,tb) = sys.exc_info()
+        tbs = string.join(traceback.format_exception(t,v,tb), "")
+        log("Traceback: " + tbs, LOG_ERROR)
+        sys.stderr.write("An unexpected error occurred. "
+                         "The complete error message has been logged to a file "
+                         "where the postmaster may read it.")
+        sys.exit(EX_UNAVAILABLE)
 else:
     # Function: ?
     error_exit("Internal error: unknown function", EX_USAGE)

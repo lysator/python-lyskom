@@ -1,18 +1,26 @@
 #!/usr/bin/python
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kommove,v 1.1 1999/10/15 08:53:19 kent Exp $
+# $Id: kommove,v 1.2 1999/10/18 10:23:05 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
-import kom
-import komparam
 import sys
 import getopt
 import string
+import os
+
+import kom
+import komparam
 import komwalk
+import komformat
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.1 $"
+vc_revision = "$Revision: 1.2 $"
 revision = vc_revision[11:-2]
+
+# Configuration
+
+SHORT_DISPLAY_LINES = 10
+PAGER = "less"
 
 # Error/sucess reporting
 exit_code = 0
@@ -46,54 +54,173 @@ recipient_type_dict = {
 # OUR NEW WALKER
 
 class Mover(komwalk.Walker):
-    def __init__(self, connection, root_text_no, from_conf_list, to_conf):
+    def __init__(self, connection, root_text_no, from_conf_list):
         komwalk.Walker.__init__(self, connection, root_text_no)
         self.from_conf_list = from_conf_list
-        self.to_conf = to_conf
-
+        self.last_destination = None
+        self.shortcuts = []
+        
     # Handle a text node
     def visit_node(self, text_no, text_stat):
-        # Present some nice information first
-        print "Text %d by %s" % (text_no, self.c.conf_name(text_stat.author))
 
-        # Gather information on recipients
-        recipients_to_delete = []
-        already_in_destination = 0
+        # If this text is not present in any conference
+        # on our from_conf_list, we should ignore it and its tree.
+        recipients = self.get_recipients(text_stat)
+        if not common_element_exists(recipients, self.from_conf_list):
+            print "Text %d finns inte i något av från-mötena" % text_no
+            return 0
+        
+        # Display short version
+        self.display_short(text_no)
 
-        for mi in text_stat.misc_info.recipient_list:
-            print "o %s: %s "  % \
-                  (recipient_type_dict[mi.type],
-                   self.c.conf_name(mi.recpt))
-            if mi.recpt <> self.to_conf:
-                recipients_to_delete.append(mi.recpt)
-            if mi.recpt == self.to_conf:
-                already_in_destination = 1
+        # Command loop
+        recurse = 1
+        while 1:
+            cmd = raw_input(">>> ")
 
-        # Handle addition
-        addition_went_wrong = 0
-        if not already_in_destination:
-            try:
-                kom.ReqAddRecipient(self.c, text_no, self.to_conf).response()
-                print "+ Add: %s" % self.c.conf_name(self.to_conf)
-            except kom.ServerError():
-                print "+ ADD: %s (BAD)" % self.c.conf_name(self.to_conf)
-                addition_went_wrong = 1
-                    
-        # Handle subtraction
-        if not addition_went_wrong:
-            for recipient in recipients_to_delete:
+            if cmd == "+":
+                # Leave as-is, continue recursion
+                break
+
+            elif cmd == "-":
+                # Leave as-is, stop recursion
+                recurse = 0
+                break
+
+            elif cmd == ".":
+                # Display all in pager
+                self.display_in_pager(text_no)
+
+            elif cmd == "":
+                # Help
+                self.display_help()
+
+            else:
+                # First, check for numeric argument
                 try:
-                    kom.ReqSubRecipient(self.c, text_no, recipient).response()
-                    print "- Sub: %s" % self.c.conf_name(recipient)
-                except kom.ServerError():
-                    print "- SUB: %s (BAD)" % self.c.conf_name(recipient)
-                    addition_went_wrong = 1
+                    index = string.atoi(cmd)
+                except:
+                    index = None
 
-        # Add this text to the 
-        return 1
+                if index is not None:
+                    if index == 0 and self.last_destination is not None:
+                        # Move to same destination as last time
+                        self.move_text(text_no, text_stat,
+                                       self.last_destination)
+                        break
 
+                    if 1 <= index <= len(self.shortcuts):
+                        # Move using shortcut
+                        self.move_text(text_no, text_stat,
+                                       self.shortcuts[index-1])
+                        break
+
+                # Assume it is the name of a conference to move this
+                # text to.
+                confs = conn.lookup_name(cmd, want_pers = 1, want_confs = 1)
+                if len(confs) == 1:
+                    self.move_text(text_no, text_stat, confs[0][0])
+                    break
+                elif len(confs) > 1:
+                    print "Flera möten matchar '%s':" % cmd
+                    for (num, name) in confs:
+                        print "- %5d %s" % (num, name)
+                    print
+                else:
+                    print "Inget möte matchar '%s'." % cmd
+                
+        # Recurse or not?
+        return recurse
+
+    # Bad node
+    def visit_node_bad(self, text_no):
+        print "Text %d får du inte läsa." % text_no
+        print
+
+    # Always follow edges
     def visit_edge(self, text_no, text_stat, comment):
         return 1
+
+    # Gather information on recipients
+    def get_recipients(self, text_stat):
+        recipients = []
+        for mi in text_stat.misc_info.recipient_list:
+            recipients.append(mi.recpt)
+
+        return recipients
+    
+    # Display
+    def display_short(self, text_no):
+        t = komformat.Text(self.c, text_no)
+        print
+        print t.get(max_body_lines = SHORT_DISPLAY_LINES)
+        print
+
+    def display_in_pager(self, text_no):
+        t = komformat.Text(self.c, text_no)
+        f = os.popen(PAGER, "w")
+        f.write(t.get())
+        f.close()
+
+    # Move
+    def move_text(self, text_no, text_stat, destination):
+        # Learn about existing recipients
+        recipients = self.get_recipients(text_stat)
+
+        # Add the destination
+        destination_name = self.c.conf_name(destination)
+        if destination not in recipients:
+            print "Skickar texten till %s." % destination_name
+            try:
+                kom.ReqAddRecipient(self.c, text_no, destination).response()
+            except kom.ServerError:
+                print "*** Fel (%s)" % (sys.exc_info()[0])
+                
+        else:
+            print "Texten finns redan i %s." % destination_name
+
+        # Remove the conferences on the from_conf_list
+        for conf_no in self.from_conf_list:
+            if conf_no in recipients and conf_no <> destination:
+                print "Tar bort texten ur %s." % self.c.conf_name(conf_no)
+                try:
+                    kom.ReqSubRecipient(self.c, text_no, conf_no).response()
+                except kom.ServerError:
+                    print "*** Fel (%s)" % (sys.exc_info()[0])
+
+        # Add destination conference to the shortcut list
+        self.add_to_shortcuts(destination)
+
+    # Shortcuts
+    def add_to_shortcuts(self, conf_no):
+        self.last_destination = conf_no
+        if conf_no not in self.shortcuts:
+            self.shortcuts.append(conf_no)
+            
+    def display_shortcuts(self):
+        if self.shortcuts:
+            print "Tidigare använda möten visas nedan (*: senaste):"
+        no = 1
+        for conf_no in self.shortcuts:
+            if conf_no == self.last_destination:
+                mark = "*"
+            else:
+                mark = " "
+            print "%3d) %s %s" % (no, mark, self.c.conf_name(conf_no))
+            no = no + 1
+
+    # Help
+    def display_help(self):
+        print "HJÄLP"
+        print "===="
+        print
+        print "        .) Visa hela inlägget via '%s'" % PAGER
+        print "        +) Ingen ändring, men följ kommentarerna"
+        print "        -) Ingen ändring, hoppa över kommentarer"
+        print "        0) Flytta inlägget till senast använda möte"
+        print "annat tal) Flytta inlägget till tidigare använt möte"
+        print
+        self.display_shortcuts()
 
 # MAIN
 # Connect and log in
@@ -110,21 +237,21 @@ if conn is None:
 
 root = None
 from_conf_list = []
-to_conf = None
 
 options, arguments = getopt.getopt(param.get_arguments(),
                                    "",
                                    [
                                        "root=",
                                        "from=",
-                                       "to=",
                                        ])
 for (opt, optarg) in options:
+
     if opt == "--root":
         try:
             root = string.atoi(optarg)
         except:
             error("%s is not a good text number" % optarg, exit_now = 1)
+
     elif opt == "--from":
         confs = conn.lookup_name(optarg, want_pers = 1, want_confs = 1)
         if len(confs) == 1:
@@ -133,14 +260,7 @@ for (opt, optarg) in options:
             error("%s is not a unique name" % optarg, exit_now = 1)
         else:
             error("%s not found" % optarg, exit_now = 1)
-    elif opt == "--to":
-        confs = conn.lookup_name(optarg, want_pers = 1, want_confs = 1)
-        if len(confs) == 1:
-            to_conf = (confs[0][0])
-        elif len(confs) > 1:
-            error("%s is not a unique name" % optarg, exit_now = 1)
-        else:
-            error("%s not found" % optarg, exit_now = 1)
+
     else:
         error("Option %s not handled (internal error)" % opt, exit_now = 1)
 
@@ -148,12 +268,12 @@ for (opt, optarg) in options:
 if root is None:
     error("You must specify the root (--root)", exit_now = 1)
 
-if to_conf is None:
-    error("You must specify destination (--to)", exit_now = 1)
+if len(from_conf_list) == 0:
+    error("You must specify at least one source (--from)", exit_now = 1)
 
 # Choose function
 
-mover = Mover(conn, root, from_conf_list, to_conf)
+mover = Mover(conn, root, from_conf_list)
 mover.walk()
 
 exit()

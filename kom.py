@@ -1,6 +1,6 @@
 # -*- coding: iso-8859-1 -*-
 # LysKOM Protocol A version 10/11 client interface for Python
-# $Id: kom.py,v 1.33 2003/09/10 20:57:49 kent Exp $
+# $Id: kom.py,v 1.34 2003/12/07 20:51:35 astrand Exp $
 # (C) 1999-2002 Kent Engström. Released under GPL.
 
 import socket
@@ -1466,8 +1466,8 @@ class CookedMiscInfo:
 
     def to_string(self):
         list = []
-        for r in self.recipient_list + \
-            self.comment_to_list + \
+        for r in self.comment_to_list + \
+            self.recipient_list + \
             self.comment_in_list:
             list = list + r.get_tuples()
         return "%d { %s}" % (len(list),

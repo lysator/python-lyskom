@@ -10,7 +10,7 @@ import komparam
 import sys
 import getopt
 
-__version__ = "$Revision: 1.5 $"
+__version__ = "$Revision: 1.6 $"
 
 def calculate(conn, starttext, endtext, toplen):
     forbidden = 0
@@ -160,7 +160,7 @@ if '__main__' == __name__:
 	for r in conn.textstats[mark[0]].misc_info.recipient_list:
 	    conf = r.get_tuples()[0][1]	
 	    txt+=" "*len("<text %d> " % mark[0])+ \
-	         "<möte %d> %s" % (conf, conn.conferences[conf].name)+"\n"
+	         "<möte %d: %s>" % (conf, conn.conferences[conf].name)+"\n"
         txt+=" "*len("<text %d> " % mark[0])+subj+"\n"
 
     if verbose:

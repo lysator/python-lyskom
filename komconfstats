@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.6 2001/02/28 23:24:34 kent Exp $
+# $Id: komconfstats,v 1.7 2001/03/01 12:00:31 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -8,7 +8,6 @@
 #   - Mottagartyp: vanlig, extra kopia, bcc
 #   - Antal mottagare
 #   - Mera aux-items (t.ex. fast-replies)
-#   - Datumhistogram med ärenderader
 # - Annat
 #   - Förklarande text under rapporten
 #   - Redovisa begränsningar (max_displayed) i lång titel
@@ -36,7 +35,7 @@ import whrandom
 import jddate # From the lyspython collection
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.6 $"
+vc_revision = "$Revision: 1.7 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -425,14 +424,17 @@ class Histogram(Tabulator):
 class HourHistogram(Histogram):
     def key_to_display(self, hour):
         return "%02d" % hour
-    
+
+swedish_weekdays = ["Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag","Söndag"]
 class WeekdayHistogram(Histogram):
     def key_to_display(self, wd):
-        return ["Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag","Söndag",][wd]
+        return swedish_weekdays[wd]
     
 class DateHistogram(Histogram):
     def key_to_display(self, jd):
-        return jd.GetString_YYYY_MM_DD()
+        (y, w, d) = jd.GetYWD()
+        return jd.GetString_YYYY_MM_DD() + " " + \
+               swedish_weekdays[d][:2]
 
 class LogHistogram(Histogram):
     # Virtual --- use a subclass!

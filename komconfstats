@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.2 2001/01/31 22:04:31 kent Exp $
+# $Id: komconfstats,v 1.3 2001/01/31 22:40:40 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import whrandom
 import jddate # From the lyspython collection
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.2 $"
+vc_revision = "$Revision: 1.3 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -573,7 +573,8 @@ class ConfStats:
     def __init__(self, person, conference, period,
                  mark_earlier = 0, mark_processed = 0,
                  full_text = 0, post_to_conference = 0,
-                 exclude_self = 0):
+                 exclude_self = 0,
+                 debug = 0):
         self.person = person
         self.conference = conference
         self.period = period
@@ -582,6 +583,7 @@ class ConfStats:
         self.full_text = full_text
         self.post_to_conference = post_to_conference
         self.exclude_self = exclude_self
+        self.debug = debug
 
         self.reports = [] # The reports to produce, in order
         
@@ -605,6 +607,7 @@ class ConfStats:
         self.st = Tabulator()
         self.st.prop.title = "Inlägg"
         self.st.prop.what = "ärenderad"
+        self.st.prop.max_displayed = 100
         sub = self.st.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
@@ -631,6 +634,8 @@ class ConfStats:
         self.sat.prop.what = "författare"
         sub = self.sat.prop.add_sub(Tabulator)
         sub.what = "ny ärenderad"
+        sub = sub.add_sub(Tabulator)
+        sub.what = "gammal ärenderad"        
         self.add_report(self.sat)
       
         self.mat = ConfNameTabulator()
@@ -899,6 +904,8 @@ class ConfStats:
         
         # Traverse the texts.
         unread_texts = conn.get_unread_texts(self.person, conference)
+        if self.debug:
+            sys.stderr.write("Number of unread texts: %d\n" %len(unread_texts))
         for (loc_no, global_no) in unread_texts:
 
             # Skip erased texts.
@@ -916,7 +923,8 @@ class ConfStats:
                                      ts.creation_time.day)
             if cmp < 0:
                 # Earlier than the requested period
-                # print "-", global_no, time.ctime(created)
+                if self.debug:
+                    sys.stderr.write("- %d %s\n" %( global_no, time.ctime(created)))
                 if self.mark_earlier:
                     kom.ReqMarkAsRead(conn,
                                       self.conference,
@@ -925,11 +933,13 @@ class ConfStats:
                 continue
             elif cmp > 0:
                 # Later then the requested period
-                # print "+", global_no, time.ctime(created)
+                if self.debug:
+                    sys.stderr.write("+ %d %s\n" %( global_no, time.ctime(created)))
                 continue
             else:
                 # Inside the requested period, fall through to do the work
-                print "*", global_no, time.ctime(created)
+                if self.debug:
+                    sys.stderr.write("* %d %s\n" %( global_no, time.ctime(created)))
                 pass
 
             # Skip texts by myself
@@ -1012,8 +1022,9 @@ class ConfStats:
                         continue
                     
                     # Subject change?
-                    if conn.subjects[entry.text_no] <> subject:
-                        self.sat.tabulate([ts.author, subject])
+                    old_subject = conn.subjects[entry.text_no]
+                    if old_subject <> subject:
+                        self.sat.tabulate([ts.author, subject, old_subject])
 
                     # Who comments whom? First both directions separately...
                     a1 = ts.author
@@ -1181,6 +1192,7 @@ mark_processed = 0
 full_text = 0
 post_to_conference = 0
 exclude_self = 0
+debug = 0
 
 options, arguments = getopt.getopt(param.get_arguments(),
                                    "",
@@ -1198,6 +1210,7 @@ options, arguments = getopt.getopt(param.get_arguments(),
                                     "full-text",
                                     "post-to-conference",
                                     "exclude-self",
+                                    "debug",
                                     ])
 
 for (opt, optarg) in options:
@@ -1235,6 +1248,8 @@ for (opt, optarg) in options:
         post_to_conference = 1
     elif opt == "--exclude-self":
         exclude_self = 1
+    elif opt == "--debug":
+        debug = 1
 
     else:
         error("Option %s not handled (internal error)" % opt, exit_now = 1)
@@ -1247,7 +1262,8 @@ cstats = ConfStats(param.get_person_no(), conference, period,
                    mark_processed = mark_processed,
                    full_text = full_text,
                    post_to_conference = post_to_conference,
-                   exclude_self = exclude_self)
+                   exclude_self = exclude_self,
+                   debug = debug)
 
 cstats.gather()
 cstats.report()

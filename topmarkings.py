@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: Latin-1 -*-
 # topmarkings.py, a program to find the texts with most marks.
 # Copyright (C) 2002 Erik Forsberg. Released under the GPL.
 
@@ -9,7 +10,7 @@ import komparam
 import sys
 import getopt
 
-__version__ = "$Revision: 1.4 $"
+__version__ = "$Revision: 1.5 $"
 
 def calculate(conn, starttext, endtext, toplen):
     forbidden = 0
@@ -125,6 +126,10 @@ if '__main__' == __name__:
         f.write("%d\n" % lasttext)
         f.close()
 
+    if markedtexts:	
+        avg = float(totalmarkings)/float(markedtexts)
+    else:
+	avg = 0
     txt = "Markeringsstatistik från text %d (Postad %s\n" \
           "                    till text %d (Postad %s\n" \
           "\n%d texter i intervallet gick ej att läsa.\n\n" \
@@ -136,9 +141,8 @@ if '__main__' == __name__:
              lasttext,
              conn.textstats[lasttext].creation_time.to_date_and_time(),
              forbidden,
-             markedtexts, totalmarkings,
-             float(totalmarkings)/float(markedtexts),
-             toplistlength)
+    	     markedtexts, totalmarkings,
+             avg, toplistlength)
 
     for mark in marks:
         if -1 == mark[0]:
@@ -152,6 +156,11 @@ if '__main__' == __name__:
         textdata = kom.ReqGetText(conn, mark[0], 0,
                                   conn.textstats[mark[0]].no_of_chars).response()
         subj = textdata.split('\n')[0]
+					
+	for r in conn.textstats[mark[0]].misc_info.recipient_list:
+	    conf = r.get_tuples()[0][1]	
+	    txt+=" "*len("<text %d> " % mark[0])+ \
+	         "<möte %d> %s" % (conf, conn.conferences[conf].name)+"\n"
         txt+=" "*len("<text %d> " % mark[0])+subj+"\n"
 
     if verbose:

@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.22 2001/06/27 19:27:19 astrand Exp $
+# $Id: kom.py,v 1.23 2001/08/29 13:06:32 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -1087,7 +1087,7 @@ class Time:
             self.minutes = 0
             self.hours = 0 
             self.day = 0
-            self.month = 0 # 1 ... 12
+            self.month = 0 # 0 .. 11 
             self.year = 0 # no of years since 1900
             self.day_of_week = 0 # 0 = Sunday ... 6 = Saturday
             self.day_of_year = 0 # 0 ... 365

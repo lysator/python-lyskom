@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+# LysKOM gazonk client
+
+# (C) 2002 Ragnar Ouchterlony. Released under GPL.
+
 import kom
 import time
 import select

@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.15 2001/01/02 09:35:37 kent Exp $
+# $Id: kom.py,v 1.16 2001/01/08 08:40:44 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -1745,7 +1745,7 @@ class Connection:
     def __init__(self, host, port = 4894, user = ""):
         # Create socket and connect
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect(host, port)
+        self.socket.connect((host, port))
 
         # Requests
         self.req_id = 0      # Last used ID (i.e. increment before use)

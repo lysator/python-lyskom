@@ -1,6 +1,6 @@
 # Tabulator and Histogram classes refactored out from the
 # python-lyskom program komconfstats.
-# $Id: tabulator.py,v 1.2 2002/01/21 23:11:00 kent Exp $
+# $Id: tabulator.py,v 1.3 2002/01/24 23:25:01 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 
@@ -231,7 +231,7 @@ class Histogram(Tabulator):
                 occ = 0
             key = self.key_to_display(raw_key)
             bar_len = occ / divisor
-            if divisor > 1:
+            if divisor > 1 and occ > 0:
                 bar_len = bar_len + 1
             
             if occ == 0 and self.prop.histogram_hide_zero:
@@ -275,7 +275,7 @@ class BinHistogram(Histogram):
         index = 0
         slot = index
         for (min, name) in self.bins:
-            if x > min:
+            if x >= min:
                 slot = index
             index = index + 1
         return slot

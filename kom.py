@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.7 1999/07/14 22:40:03 kent Exp $
+# $Id: kom.py,v 1.8 1999/07/15 14:37:52 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -157,6 +157,37 @@ MIR_BCC = MI_BCC_RECPT
 
 MIC_COMMENT = MI_COMM_TO
 MIC_FOOTNOTE = MI_FOOTN_TO
+
+# Constants for Aux-Item
+
+AI_CONTENT_TYPE = 1 # (text)
+AI_FAST_REPLY = 2 # (text)
+AI_CROSS_REFERENCE = 3 # (text, conference)
+AI_NO_COMMENTS = 4 # (text)
+AI_PERSONAL_COMMENT = 5 # (text)
+AI_REQUEST_CONFIRMATION = 6 # (text)
+AI_READ_CONFIRM = 7 # (text)
+AI_REDIRECT = 8 # (conference)
+AI_X_FACE = 9 # (conference)
+AI_ALTERNATE_NAME = 10 # (text, conference)
+AI_PGP_SIGNATURE = 11 # (text)
+AI_PGP_PUBLIC_KEY = 12 # (letterbox)
+AI_E_MAIL_ADDRESS = 13 # (conference, letterbox, server)
+AI_FAQ_TEXT = 14 # (conference, server)
+AI_CREATING_SOFTWARE = 15 # (text)
+AI_MX_AUTHOR = 16 # (text)
+AI_MX_FROM = 17 # (text)
+AI_MX_REPLY_TO = 18 # (text)
+AI_MX_TO = 19 # (text)
+AI_MX_CC = 20 # (text)
+AI_MX_DATE = 21 # (text)
+AI_MX_MESSAGE_ID = 22 # (text)
+AI_MX_IN_REPLY_TO = 23 # (text)
+AI_MX_MISC = 24 # (text)
+AI_MX_ALLOW_FILTER = 25 # (conference)
+AI_MX_REJECT_FORWARD = 26 # (conference)
+AI_NOTIFY_COMMENTS = 27 # (letterbox)
+AI_FAQ_FOR_CONF = 28 # (text)
 
 #
 # Classes for requests to the server are all subclasses of Request.
@@ -344,14 +375,14 @@ class ReqAddComment(Request):
         c.send_string("%d 32 %d %d\n" % \
                       (self.id, text_no, comment_to))
 
-# sub-comment [33] (1) Obsolete (10) FIXME: Why???
+# sub-comment [33] (1) Recommended
 class ReqSubComment(Request):
     def __init__(self, c, text_no, comment_to):
         self.register(c)
         c.send_string("%d 33 %d %d\n" % \
                       (self.id, text_no, comment_to))
 
-# get-map [34] (1) Obsolete??? (10) Use local-to-global (103)
+# get-map [34] (1) Obsolete (10) Use local-to-global (103)
 
 # get-time [35] (1) Recommended
 class ReqGetTime(Request):
@@ -672,10 +703,11 @@ class ReqGetCollateTable(Request):
 class ReqCreateText(Request):
     def __init__(self, c, text, misc_info, aux_items = []):
         self.register(c)
-        raw_misc_info = misc_info.to_string()
-        # FIXME: Ignoring aux-items for a while
-        c.send_string("%d 86 %dH%s %s 0 { }\n" %
-                      (self.id, len(text), text, raw_misc_info))
+        c.send_string("%d 86 %dH%s %s %s\n" %
+                      (self.id,
+                       len(text), text,
+                       misc_info.to_string(),
+                       c.array_to_string(aux_items)))
         
     def parse_response(self):
         # --> Text-No
@@ -685,10 +717,11 @@ class ReqCreateText(Request):
 class ReqCreateAnonymousText(Request):
     def __init__(self, c, text, misc_info, aux_items = []):
         self.register(c)
-        raw_misc_info = misc_info.to_string()
-        # FIXME: Ignoring aux-items for a while
-        c.send_string("%d 87 %dH%s %s 0 { }\n" %
-                      (self.id, len(text), text, raw_misc_info))
+        c.send_string("%d 87 %dH%s %s %s\n" %
+                      (self.id,
+                       len(text), text,
+                       misc_info.to_string(),
+                       c.array_to_string(aux_items)))
         
     def parse_response(self):
         # --> Text-No
@@ -1109,7 +1142,8 @@ class MICommentIn:
         self.text_no = text_no
 
     def get_tuples(self):
-        return [(self.type + 1, self.text_no)]
+        # Cannot send these to sever
+        return []
 
 class CookedMiscInfo:
     def __init__(self):
@@ -1170,15 +1204,28 @@ class AuxItemFlags:
          self.reserved3,
          self.reserved4) = c.parse_bitstring(8)
 
-class AuxItem:
-    def __init__(self):
-        self.aux_no = None
-        self.tag = None
-        self.creator = None
-        self.created_at = None
-        self.flags = None
-        self.inherit_limit = None
-        self.data = None
+    def to_string(self):
+        return "%d%d%d%d%d%d%d%d" % \
+               (self.deleted,
+                self.inherit,
+                self.secret,
+                self.hide_creator,
+                self.dont_garb,
+                self.reserved2,
+                self.reserved3,
+                self.reserved4)
+
+# This class works as Aux-Item on reception, and
+# Aux-Item-Input when being sent.
+class AuxItem: 
+    def __init__(self, tag = None):
+        self.aux_no = None # not part of Aux-Item-Input
+        self.tag = tag
+        self.creator = None # not part of Aux-Item-Input
+        self.created_at = None # not part of Aux-Item-Input
+        self.flags = AuxItemFlags()
+        self.inherit_limit = 0
+        self.data = ""
 
     def parse(self, c):
         self.aux_no = c.parse_int()
@@ -1188,6 +1235,13 @@ class AuxItem:
         self.flags = c.parse_object(AuxItemFlags)
         self.inherit_limit = c.parse_int()
         self.data = c.parse_string()
+
+    def to_string(self):
+        return "%d %s %d %dH%s" % \
+               (self.tag,
+                self.flags.to_string(),
+                self.inherit_limit,
+                len(self.data), self.data)
      
 # TEXT
 
@@ -1724,6 +1778,12 @@ class Connection:
             if star <> "*": raise ProtocolError
         return res
 
+    def array_to_string(self, array):
+        return "%d { %s }" % (len(array),
+                              string.join(map(lambda x: x.to_string(),
+                                              array),
+                                          " "))
+                             
     def parse_array_of_int(self):
         len = self.parse_int()
         res = []
@@ -1827,16 +1887,16 @@ class Connection:
         return res
 
 #
-# CLASS for a cached connection
+# CLASS for a connection with...
+# * Caches for:
+#   - UConference
+#   - Conference
+#   - Person
+#   - TextStat 
+#   No negative caching. No time-outs.
+#   Some automatic invalidation (if accept-async called appropriately).
 #
-# Caches for:
-# - UConference
-# - Conference
-# - Person
-# - TextStat 
-#
-# No negative caching. No time-outs.
-# Some automatic invalidation (if accept-async has been called appropriately).
+# * Lookup function (conference/person name -> numbers)
 
 class CachedConnection(Connection):
     def __init__(self, host, port = 4894, user = ""):
@@ -1885,6 +1945,29 @@ class CachedConnection(Connection):
             pass
 
         return default
+
+    # Lookup function (name -> (list of tuples(no, name))
+    # Special case: "#number" is not looked up
+    def lookup_name(self, name, want_pers, want_confs):
+        if name[:1] == "#":
+            # Numerical case
+            try:
+                no = string.atoi(name[1:]) # Exception if not int
+                type = self.uconferences[no].type # Exception if not found
+                name = self.uconferences[no].name
+                if (want_pers and type.letterbox) or \
+                   (want_confs and (not type.letterbox)):
+                    return [(no, name)]
+                else:
+                    return []
+            except:
+                return []
+        else:
+            # Alphabetical case
+            matches = ReqLookupZName(self, name,
+                                     want_pers = want_pers,
+                                     want_confs = want_confs).response()
+            return map(lambda x: (x.conf_no, x.name), matches)
 
 # Cache class for use internally by CachedConnection
 class Cache:

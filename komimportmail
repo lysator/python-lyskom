@@ -1,7 +1,7 @@
 #!/sw/local/bin/python
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.21 2000/08/17 08:02:11 kent Exp $
+# $Id: komimportmail,v 1.22 2000/10/13 12:47:25 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -22,7 +22,7 @@ import re
 import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.21 $"
+vc_revision = "$Revision: 1.22 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -200,8 +200,8 @@ def create_article_or_add_recipients(mail,
     except:
         message_id = None
 
-    if message_id is None:
-        error_exit("No message ID in mail", EX_DATAERR)
+    if message_id is None or message_id == "<>":
+        error_exit("No or empty message ID in mail", EX_DATAERR)
 
     log("Handling mail with Message-ID: %s" % message_id, LOG_INFO)
 

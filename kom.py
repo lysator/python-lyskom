@@ -1,6 +1,6 @@
 # -*- coding: iso-8859-1 -*-
 # LysKOM Protocol A version 10/11 client interface for Python
-# $Id: kom.py,v 1.39 2004/01/24 23:07:53 astrand Exp $
+# $Id: kom.py,v 1.40 2004/07/18 19:58:24 astrand Exp $
 # (C) 1999-2002 Kent Engström. Released under GPL.
 
 import socket
@@ -2614,7 +2614,7 @@ class CachedUserConnection(CachedConnection):
         result = []
         ms_list = ReqGetMembership(self, self._user_no, 0, 10000, want_read_texts=0).response()
         for ms in ms_list:
-            if (ms.priority != 0) and (not ms.type.passive):
+            if not ms.type.passive:
                 result.append(ms.conference)
         return result
 

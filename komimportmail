@@ -1,7 +1,7 @@
 #!/sw/local/bin/python
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.22 2000/10/13 12:47:25 kent Exp $
+# $Id: komimportmail,v 1.23 2000/10/25 17:52:04 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -22,7 +22,7 @@ import re
 import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.22 $"
+vc_revision = "$Revision: 1.23 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -815,5 +815,5 @@ else:
     error_exit("Internal error: unknown function", EX_USAGE)
 
 # Exit successfully
-log("Done.", LOG_INFO)
+log("Done on %s." % time.ctime(time.time()), LOG_INFO)
 sys.exit(EX_OK)

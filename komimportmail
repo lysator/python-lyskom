@@ -1,7 +1,7 @@
 #!/usr/bin/python-1.5.2
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.17 1999/10/18 10:28:42 kent Exp $
+# $Id: komimportmail,v 1.18 1999/10/22 08:51:09 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -22,7 +22,7 @@ import re
 import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.17 $"
+vc_revision = "$Revision: 1.18 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -195,8 +195,11 @@ def create_article_or_add_recipients(mail,
                                      envelope_recipients):
     # Get Message-ID from mail
     try:
-        message_id = mail.headers["Message-ID"]
+        message_id = last_message_id_in(mail.headers["Message-ID"])
     except:
+        message_id = None
+
+    if message_id is None:
         error_exit("No message ID in mail", EX_DATAERR)
 
     log("Handling mail with Message-ID: %s" % message_id, LOG_INFO)
@@ -260,9 +263,11 @@ def create_article(mail, envelope_sender, envelope_recipients,
     text_no = create_article_part(mail,
                                   envelope_sender,
                                   envelope_recipients,
+                                  message_id,
                                   parts[0],
+                                  parent_message_id,
                                   parent_text_no,
-                                  parent = None)
+                                  top = None)
 
     # Handle the rest of the parts as comments to the first part
     sub_text_nos = []
@@ -270,9 +275,11 @@ def create_article(mail, envelope_sender, envelope_recipients,
         sub_text_no = create_article_part(mail,
                                           envelope_sender,
                                           envelope_recipients,
+                                          message_id,
                                           part,
+                                          parent_message_id,
                                           parent_text_no,
-                                          parent = text_no)
+                                          top = text_no)
         sub_text_nos.append(sub_text_no)
 
     # Now, we need to add an AI_MX_MIME_PART_IN to the first part
@@ -313,9 +320,11 @@ def create_article(mail, envelope_sender, envelope_recipients,
 def create_article_part(mail,
                         envelope_sender,
                         recipient_list,
+                        message_id,
                         part,
+                        parent_message_id = None,
                         parent_text_no = None,
-                        parent = None):
+                        top = None):
 
     # Prepare Misc-Info and Aux Item list for later user
     misc_info = kom.CookedMiscInfo()
@@ -327,17 +336,17 @@ def create_article_part(mail,
         misc_info.recipient_list.append(mir)
 
     # Threading of main article based on In-Reply-To/References
-    if parent is None and parent_text_no is not None:
+    if top is None and parent_text_no is not None:
         mic = kom.MICommentTo(kom.MIC_COMMENT, parent_text_no)
         misc_info.comment_to_list.append(mic)
 
     # Threading of appendices as comments (or footnotes) to the
     # main article. We mark the appendix with a special aux-item,
     # mx-mime-belongs-to to designate it as a MIME appendix.
-    if parent is not None:
-        mic = kom.MICommentTo(APPENDIX_COMMENT_TYPE, parent)
+    if top is not None:
+        mic = kom.MICommentTo(APPENDIX_COMMENT_TYPE, top)
         misc_info.comment_to_list.append(mic)
-        aux_items.append(kom.AuxItem(kom.AI_MX_MIME_BELONGS_TO, str(parent)))
+        aux_items.append(kom.AuxItem(kom.AI_MX_MIME_BELONGS_TO, str(top)))
         
     # Let the world know about this marvelous creating software :-)
     aux_items.append(kom.AuxItem(kom.AI_CREATING_SOFTWARE,
@@ -346,7 +355,7 @@ def create_article_part(mail,
     # Handle envelope information (creating aux-items)
     # We only put these aux-items on the main article (not on appendices).
 
-    if parent is None:
+    if top is None:
         aux_items.append(kom.AuxItem(kom.AI_MX_ENVELOPE_SENDER,
                                      envelope_sender))
         # Currently, the envelope recipients are not stored anywhere.
@@ -357,14 +366,15 @@ def create_article_part(mail,
     # We now put these aux-items on the main article and the appendices.
 
     # Aux-items for non-address single header fields
-    for (header_name, aux_item_type) in [
-        ("Message-ID", kom.AI_MX_MESSAGE_ID),
-        ("In-Reply-To", kom.AI_MX_IN_REPLY_TO),
-        ]:
-        if mail.headers.has_key(header_name):
-            ai = kom.AuxItem(aux_item_type,
-                             rfc1522.decode(mail.headers[header_name]))
-            aux_items.append(ai)
+
+    # Message-ID
+    ai = kom.AuxItem(kom.AI_MX_MESSAGE_ID, message_id)
+    aux_items.append(ai)
+
+    # In-Reply-To information
+    if parent_message_id is not None:
+        ai = kom.AuxItem(kom.AI_MX_IN_REPLY_TO, parent_message_id)
+        aux_items.append(ai)
 
     # Aux-items for adress header fields come in three formats:
     #
@@ -433,7 +443,7 @@ def create_article_part(mail,
 
     # The complete set of mail headers (no decoding of these)
     # This one should not be put on the appendices:
-    if parent is None:
+    if top is None:
         aux_items.append(kom.AuxItem(kom.AI_MX_MISC,
                                      string.join(mail.headers.headers,
                                                  "")))
@@ -476,7 +486,7 @@ def create_article_part(mail,
         subject = ""
 
     # The subject of an appendix is slightly modified 
-    if parent is not None:
+    if top is not None:
         if mime_filename:
             subject = APPENDIX_SUBJECT_PREFIX % mime_filename + subject
         else:

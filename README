@@ -48,8 +48,8 @@ HACKER SUMMARY
 - lockfile.py is a helper module used to implement the locking
   need by the above module.
 
-  Other program
-  -------------
+  Other programs
+  --------------
 
   Some are really useful (like komshow) while others should
   be considered simple demo programs.
@@ -73,6 +73,8 @@ HACKER SUMMARY
 - komparam.py is a helper module used by the programs above to
   learn server address, server port, person name/number and password
   from environment variables and/or a "~/.komrc" file.
+
+- komlasttext displays the highest text number of a readble text.
 
 - komconfwalker.py defines a class ConfTemporalWalker used to walk a
   conference, processing articles written during a specified

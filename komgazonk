@@ -207,7 +207,7 @@ class Gazonk:
             message += indent(gdb.create_string(MAX_ENTRIES_GUESS_LIST),7)
             message += "\n"
 
-            glist = zip(gdb.db.values(), gdb.db.keys())
+            glist = zip(gdb.db.keys(), gdb.db.values())
             for (guess, amount) in glist:
                 if not pcg_table.has_key(guess):
                     pcg_table[guess] = [0]*(i-1)

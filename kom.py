@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.5 1999/07/14 14:44:18 kent Exp $
+# $Id: kom.py,v 1.6 1999/07/14 15:29:48 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -873,7 +873,7 @@ class AsyncMessage:
     pass
 
 # async-new-text-old [0] (1) Obsolete (10) <DEFAULT>
-
+ASYNC_NEW_TEXT_OLD = 0
 class AsyncNewTextOld(AsyncMessage):
     def parse(self, c):
         self.text_no = c.parse_int()
@@ -883,6 +883,7 @@ class AsyncNewTextOld(AsyncMessage):
 # async-i-am-on-onsolete [2] (1) Obsolete
 
 # async-new-name [5] (1) Recommended <DEFAULT>
+ASYNC_NEW_NAME = 5
 class AsyncNewName(AsyncMessage):
     def parse(self, c):
         self.conf_no = c.parse_int()
@@ -890,21 +891,25 @@ class AsyncNewName(AsyncMessage):
         self.new_name = c.parse_string()
 
 # async-i-am-on [6] Recommended
+ASYNC_I_AM_ON = 6
 class AsyncIAmOn(AsyncMessage):
     def parse(self, c):
         self.info = c.parse_object(WhoInfo)
 
 # async-sync-db [7] (1) Recommended <DEFAULT>
+ASYNC_SYNC_DB = 7
 class AsyncSyncDB(AsyncMessage):
     def parse(self, c):
         pass
 
 # async-leave-conf [8] (1) Recommended <DEFAULT>
+ASYNC_LEAVE_CONF = 8
 class AsyncLeaveConf(AsyncMessage):
     def parse(self, c):
         self.conf_no = c.parse_int()
 
 # async-login [9] (1) Recommended <DEFAULT>
+ASYNC_LOGIN = 9
 class AsyncLogin(AsyncMessage):
     def parse(self, c):
         self.person_no = c.parse_int()
@@ -913,11 +918,13 @@ class AsyncLogin(AsyncMessage):
 # async-broadcast [10] Obsolete
 
 # async-rejected-connection [11] (1) Recommended <DEFAULT>
+ASYNC_REJECTED_CONNECTION = 11
 class AsyncRejectedConnection(AsyncMessage):
     def parse(self, c):
         pass
 
 # async-send-message [12] (1) Recommended <DEFAULT>
+ASYNC_SEND_MESSAGE = 12
 class AsyncSendMessage(AsyncMessage):
     def parse(self, c):
         self.recipient = c.parse_int()
@@ -925,24 +932,28 @@ class AsyncSendMessage(AsyncMessage):
         self.message = c.parse_string()
 
 # async-logout [13] (1) Recommended <DEFAULT>
+ASYNC_LOGOUT = 13
 class AsyncLogout(AsyncMessage):
     def parse(self, c):
         self.person_no = c.parse_int()
         self.session_no = c.parse_int()
 
 # async-deleted-text [14] (10) Recommended
+ASYNC_DELETED_TEXT = 14
 class AsyncDeletedText(AsyncMessage):
     def parse(self, c):
         self.text_no = c.parse_int()
         self.text_stat = c.parse_object(TextStat)
 
 # async-new-text [15] (10) Recommended
+ASYNC_NEW_TEXT = 15
 class AsyncNewText(AsyncMessage):
     def parse(self, c):
         self.text_no = c.parse_int()
         self.text_stat = c.parse_object(TextStat)
 
 # async-new-recipient [16] (10) Recommended
+ASYNC_NEW_RECIPIENT = 16
 class AsyncNewRecipient(AsyncMessage):
     def parse(self, c):
         self.text_no = c.parse_int()
@@ -950,6 +961,7 @@ class AsyncNewRecipient(AsyncMessage):
         self.type = c.parse_int()
 
 # async-sub-recipient [17] (10) Recommended
+ASYNC_SUB_RECIPIENT = 17
 class AsyncSubRecipient(AsyncMessage):
     def parse(self, c):
         self.text_no = c.parse_int()
@@ -957,26 +969,27 @@ class AsyncSubRecipient(AsyncMessage):
         self.type = c.parse_int()
 
 # async-new-membership [18] (10) Recommended
+ASYNC_NEW_MEMBERSHIP = 18
 class AsyncNewMembership(AsyncMessage):
     def parse(self, c):
         self.person_no = c.parse_int()
         self.conf_no = c.parse_int()
 
 async_dict = {
-    0: AsyncNewTextOld,
-    5: AsyncNewName,
-    6: AsyncIAmOn,
-    7: AsyncSyncDB,
-    8: AsyncLeaveConf,
-    9: AsyncLogin,
-   11: AsyncRejectedConnection,
-   12: AsyncSendMessage,
-   13: AsyncLogout,
-   14: AsyncDeletedText,
-   15: AsyncNewText,
-   16: AsyncNewRecipient,
-   17: AsyncSubRecipient,
-   18: AsyncNewMembership
+    ASYNC_NEW_TEXT_OLD: AsyncNewTextOld,
+    ASYNC_NEW_NAME: AsyncNewName,
+    ASYNC_I_AM_ON: AsyncIAmOn,
+    ASYNC_SYNC_DB: AsyncSyncDB,
+    ASYNC_LEAVE_CONF: AsyncLeaveConf,
+    ASYNC_LOGIN: AsyncLogin,
+    ASYNC_REJECTED_CONNECTION: AsyncRejectedConnection,
+    ASYNC_SEND_MESSAGE: AsyncSendMessage,
+    ASYNC_LOGOUT: AsyncLogout,
+    ASYNC_DELETED_TEXT: AsyncDeletedText,
+    ASYNC_NEW_TEXT: AsyncNewText,
+    ASYNC_NEW_RECIPIENT: AsyncNewRecipient,
+    ASYNC_SUB_RECIPIENT: AsyncSubRecipient,
+    ASYNC_NEW_MEMBERSHIP: AsyncNewMembership
     }
 
 #
@@ -1677,8 +1690,6 @@ class Connection:
             if self.async_handlers.has_key(msg_no):
                 for handler in self.async_handlers[msg_no]:
                     handler(msg,self)
-            else:
-                print "*** ASYNC %d UNHANDLED ***" % msg_no
         else:
             raise UnimplementedAsync, msg_no
         
@@ -1815,3 +1826,72 @@ class Connection:
         self.rb_pos = self.rb_pos + 1
         return res
 
+#
+# CLASS for a cached connection
+#
+# Caches for:
+# - UConference
+# - Conference
+# - Person
+# - TextStat 
+#
+# No negative caching.
+# No time-outs
+# Some automatic invalidation (if accept-async has been called appropriately)
+
+class CachedConnection(Connection):
+    def __init__(self, host, port = 4894, user = ""):
+        Connection.__init__(self, host, port, user)
+
+        self.uconferences = Cache(self.fetch_uconference)
+        self.conferences = Cache(self.fetch_conference)
+        self.persons = Cache(self.fetch_person)
+        self.textstats = Cache(self.fetch_textstat)
+
+        self.add_async_handler(ASYNC_NEW_NAME, self.cah_conference)
+        self.add_async_handler(ASYNC_LEAVE_CONF, self.cah_conference)
+        self.add_async_handler(ASYNC_DELETED_TEXT, self.cah_textstat)
+        self.add_async_handler(ASYNC_NEW_RECIPIENT, self.cah_textstat)
+        self.add_async_handler(ASYNC_SUB_RECIPIENT, self.cah_textstat)
+        self.add_async_handler(ASYNC_DELETED_TEXT, self.cah_textstat)
+
+    # Fetching functions
+    def fetch_uconference(self, no):
+        return ReqGetUconfStat(self, no).response()
+
+    def fetch_conference(self, no):
+        return ReqGetConfStat(self, no).response()
+
+    def fetch_person(self, no):
+        return ReqGetPersonStat(self, no).response()
+
+    def fetch_textstat(self, no):
+        return ReqGetTextStat(self, no).response()
+
+    # Handlers for asynchronous messages
+    # (used to invalidate cache entries)
+
+    def cah_conference(self, msg, c):
+        self.conferences.invalidate(msg.conf_no)
+        self.uconferences.invalidate(msg.conf_no)
+
+    def cah_textstat(self, msg, c):
+        self.textstats.invalidate(msg.text_no)
+
+class Cache:
+    def __init__(self, fetcher):
+        self.dict = {}
+        self.fetcher = fetcher
+        
+    def __getitem__(self, no):
+        if self.dict.has_key(no):
+            return self.dict[no]
+        self.dict[no] = self.fetcher(no)
+        return self.dict[no]
+
+    def invalidate(self, no):
+        if self.dict.has_key(no):
+            del self.dict[no]
+            
+        
+        

@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.11 1999/07/23 13:00:10 kent Exp $
+# $Id: kom.py,v 1.12 1999/07/23 18:13:53 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -1566,30 +1566,44 @@ class TextNumberPair:
     
 class TextMapping:
     def parse(self, c):
-        self.range_begin = c.parse_int()
-        self.range_end = c.parse_int()
+        self.range_begin = c.parse_int() # Included in the range
+        self.range_end = c.parse_int() # Not included in range (first after)
         self.later_texts_exists = c.parse_int()
         self.block_type = c.parse_int()
 
         self.dict = {}
+        self.list = []
+
         if self.block_type == 0:
             # Sparse
             print "[SPARSE TEXTMAPPING NOT TESTED]"
+            self.type_text = "sparse"
             self.sparse_list = c.parse_array(TextNumberPair)
             for tnp in self.sparse_list:
                 self.dict[tnp.local_number] = tnp.global_number
-                
+                self.list.append((tnp.local_number, tnp.global_number))
         elif self.block_type == 1:
             # Dense
+            self.type_text = "dense"
             self.dense_first = c.parse_int()
             self.dense_texts = c.parse_array_of_int()
             local_number = self.dense_first
             for global_number in self.dense_texts:
                 self.dict[local_number] = global_number
+                self.list.append((local_number, global_number))
                 local_number = local_number + 1
         else:
             raise ProtocolError
 
+    def __repr__(self):
+        if self.later_texts_exists:
+            more = " (more exists)"
+        else:
+            more = ""
+        return "<TextMapping (%s) %d...%d%s>" % (
+            self.type_text,
+            self.range_begin, self.range_end - 1 ,
+            more)
 # MARK
 
 class Mark:
@@ -1954,6 +1968,7 @@ class Connection:
 #   - Conference
 #   - Person
 #   - TextStat 
+#   - Subjects
 #   No negative caching. No time-outs.
 #   Some automatic invalidation (if accept-async called appropriately).
 #
@@ -1967,6 +1982,7 @@ class CachedConnection(Connection):
         self.conferences = Cache(self.fetch_conference)
         self.persons = Cache(self.fetch_person)
         self.textstats = Cache(self.fetch_textstat)
+        self.subjects = Cache(self.fetch_subject)
 
         self.add_async_handler(ASYNC_NEW_NAME, self.cah_conference)
         self.add_async_handler(ASYNC_LEAVE_CONF, self.cah_conference)
@@ -1988,6 +2004,14 @@ class CachedConnection(Connection):
     def fetch_textstat(self, no):
         return ReqGetTextStat(self, no).response()
 
+    def fetch_subject(self, no):
+        # FIXME: we assume that the subject is not longer than 200 chars.
+        subject = ReqGetText(self, no, 0, 200).response()
+        pos = string.find(subject, "\n")
+        if pos <> -1:
+            subject = subject[:pos]
+        return subject
+
     # Handlers for asynchronous messages (internal use)
     # (used to invalidate cache entries)
 
@@ -1997,7 +2021,8 @@ class CachedConnection(Connection):
 
     def cah_textstat(self, msg, c):
         self.textstats.invalidate(msg.text_no)
-
+        self.subjects.invalidate(msg.text_no)
+        
     # Common operation: get name of conference (via uconference)
     def conf_name(self, conf_no, default = "", include_no = 0):
         try:

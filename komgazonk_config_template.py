@@ -71,4 +71,9 @@ MAX_SLEEP_TIME_NIGHT = 600
 # Set to 1 if correct guess should be showed in the end message of the round
 GAZ_CORRECT_IN_END_MESSAGE = 1
 
+# Set to 0 if no warnings or forbids should be sent for using old passwords.
+# Set to 1 for just sending a warning for using old passwords.
+# Set to 2 to forbid using old passwords.
+GAZ_USING_OLD_PASSWORDS = 1
+
 # -- CONFIGURATION ENDS HERE ---

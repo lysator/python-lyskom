@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.1"
+VERSION="0.3.2"
 
 INVISIBLE = 1
 
@@ -416,7 +416,24 @@ class Gazonk:
                              msg.sender)
                 return
             elif ma and mb:
-                self.password = mb.group(1)
+                pw = mb.group(1)
+                if GAZ_USING_OLD_PASSWORDS > 0 and \
+                       self.password_history.count(pw) > 0:
+                    if GAZ_USING_OLD_PASSWORDS == 1:
+                        send_message("Detta lösenord har använts nyligen.\n" \
+                                     "Är du säker på att du vill använda det igen?\n\n" \
+                                     "Du kan fortfarande ändra på lösenordet om du vill.\n" \
+                                     "Använd kommandot 'gamla lösenord' för att se en lista\n" \
+                                     "på lösenord som använts nyligen.", \
+                                     msg.sender)
+                    if GAZ_USING_OLD_PASSWORDS == 2:
+                        send_message("Detta lösenord har använts nyligen.\n" \
+                                     "Detta är inte tillåtet, var snäll och använd ett annat.\n\n" \
+                                     "Använd kommandot 'gamla lösenord' för att se en lista\n" \
+                                     "på lösenord som använts nyligen.", \
+                                     msg.sender)
+                        return
+                self.password = pw
                 self.clues = []
                 self.current_clue = -1
                 self.time_last_action = -1
@@ -746,7 +763,7 @@ class Stats:
             if not self.people.has_key(g.person_no):
                 self.people[g.person_no] = PersonStats()
             self.people[g.person_no].m_coc_mg.add(cluenr)
-            self.people[g.person_no].gpk_coc_mg.add(g.current_guesses.count + 1)
+            self.people[g.person_no].gpk_coc_mg.add(g.current_guesses.count)
 
     def merge_into(self, other):
         self.round_count += other.round_count

@@ -24,7 +24,18 @@ THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 *** JysKom
 
 * New programs
-** Batch article mover for moderators
+** kommove: batch article mover for moderators
+*** give --root and --from on command line
+*** show articles (~ 10 lines of text)
+*** ask for every text what to do:
+**** leave as-is
+**** leave as-is, prune (do not continue to recurse)
+**** move to named conference
+**** move to conference used earlier (by number)
+**** add conference to from-set?
+**** batch-below-this-node
+
+* Other programs
 
 * Documentation
 ** Include GPL statements everywhere

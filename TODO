@@ -3,7 +3,7 @@ This is an -*- outline -*- file
 THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 
 * komimportmail
-** Not importing SpamAssassin marked spam (settable)
+** Import attachments to a separate conference (aux-item settable)
 ** Undigesting RISKS 
 ** Removing footers
 ** Check what exit code is used for "already present" (duplication)

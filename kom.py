@@ -1,6 +1,6 @@
 # -*- coding: iso-8859-1 -*-
 # LysKOM Protocol A version 10/11 client interface for Python
-# $Id: kom.py,v 1.38 2004/01/22 15:47:05 astrand Exp $
+# $Id: kom.py,v 1.39 2004/01/24 23:07:53 astrand Exp $
 # (C) 1999-2002 Kent Engström. Released under GPL.
 
 import socket
@@ -2501,6 +2501,9 @@ class CachedConnection(Connection):
     def regexp_lookup(self, regexp, want_pers, want_confs,
                       case_sensitive=0):
         """Lookup name using regular expression"""
+        if regexp.startswith("#"):
+            return self.lookup_name(regexp, want_pers, want_confs)
+        
         if not case_sensitive:
             regexp = self._case_insensitive_regexp(regexp)
 

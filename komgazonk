@@ -213,8 +213,8 @@ class Gazonk:
                     pcg_table[guess] = [0]*(i-1)
 
             for (guess, values) in zip(pcg_table.keys(), pcg_table.values()):
-                if gdb.has_key(guess):
-                    pcg_table[guess].append(gdb[guess])
+                if gdb.db.has_key(guess):
+                    pcg_table[guess].append(gdb.db[guess])
                 else:
                     pcg_table[guess].append(0)
 

@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.9 1999/07/16 16:50:14 kent Exp $
+# $Id: kom.py,v 1.10 1999/07/16 22:22:31 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -1104,10 +1104,13 @@ class Time:
             self.day_of_year, # ignored by server
             self.is_dst)
 
-    def __repr__(self):
-        return "<Time %04d-%02d-%02d %02d:%02d:%02d>" % \
+    def to_date_and_time(self):
+        return "%04d-%02d-%02d %02d:%02d:%02d" % \
             (self.year + 1900, self.month + 1, self.day,
              self.hours, self.minutes, self.seconds)
+
+    def __repr__(self):
+        return "<Time %s>" % self.to_date_and_time()
 
 # RESULT FROM LOOKUP-Z-NAME
 
@@ -1139,12 +1142,12 @@ class RawMiscInfo:
 
 class MIRecipient:
     def __init__(self, type = MIR_TO, recpt = 0):
-        self.type = type
-        self.recpt = recpt
-        self.loc_no = None
-        self.rec_time = None
-        self.sent_by = None
-        self.sent_at = None
+        self.type = type # MIR_TO, MIR_CC or MIR_BCC
+        self.recpt = recpt   # Always present
+        self.loc_no = None   # Always present
+        self.rec_time = None # Will be None if not sent by server
+        self.sent_by = None  # Will be None if not sent by server
+        self.sent_at = None  # Will be None if not sent by server
 
     def decode_additional(self, raw, i):
         while i < len(raw):
@@ -1213,7 +1216,7 @@ class CookedMiscInfo:
                 i = ct.decode_additional(raw, i+1)
                 self.comment_to_list.append(ct)
             elif raw[i].type in [MI_COMM_IN, MI_FOOTN_IN]:
-                ci = MICommentIn(raw[i].type, raw[i].data - 1 ) # KLUDGE :-)
+                ci = MICommentIn(raw[i].type - 1 , raw[i].data  ) # KLUDGE :-)
                 i = i + 1
                 self.comment_in_list.append(ci)
             else:
@@ -1295,15 +1298,6 @@ class AuxItem:
 # TEXT
 
 class TextStat:
-    def __init__(self):
-        self.creation_time = None
-        self.author = None
-        self.no_of_lines = None
-        self.no_of_chars = None
-        self.no_of_marks = None
-        self.misc_info = []
-        self.aux_items = []
-
     def parse(self, c, old_format = 0):
         self.creation_time = c.parse_object(Time)
         self.author = c.parse_int()
@@ -1998,13 +1992,18 @@ class CachedConnection(Connection):
         self.textstats.invalidate(msg.text_no)
 
     # Common operation: get name of conference (via uconference)
-    def conf_name(self, conf_no, default = ""):
+    def conf_name(self, conf_no, default = "", include_no = 0):
         try:
-            return self.uconferences[conf_no].name
+            conf_name = self.uconferences[conf_no].name
+            if include_no:
+                return "%s (#%d)" % (conf_name, conf_no)
+            else:
+                return conf_name
         except:
-            pass
-
-        return default
+            if string.find(default, "%d") <> -1:
+                return default % conf_no
+            else:
+                return default
 
     # Lookup function (name -> (list of tuples(no, name))
     # Special case: "#number" is not looked up

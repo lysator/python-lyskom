@@ -94,11 +94,14 @@ HACKER SUMMARY
 
 - invite-all adds all users in the system to a certain conference. 
 
+- komgazonk is an interesting program to be used for playing gazonk
+  in LysKOM. See README.komgazonk.
 
 COPYRIGHT
 
   (C) Copyright 1999, 2000, 2002 Kent Engström, Peter Liljenberg, 
-                                 Peter Åstrand, Erik Forsberg.
+                                 Peter Åstrand, Erik Forsberg,
+                                 Ragnar Ouchterlony.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by

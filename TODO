@@ -4,27 +4,38 @@ THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 
 * komimportmail
 ** Add LOGLEVEL configuration setting
+*** Levels: ERROR, WARNING, INFO, DEBUG1, DEBUG2, ...
+*** Command line flag (need better parsing)
+
 ** Check what exit code is used for "already present" (duplication)
-** Fix AI_MX_MISC and AI_MX_MIME_MISC overlap
-** Write installation instructions w.r.t. sendmail
-** How are we going to thread articles that arrive in bad order?
-*** Keep "backward links" in message-id database
-Normal entry:  Message-ID --> (textno, added_time_t)
-Backwards link: Message-ID --> [list of textnos that want to comment this ID]
-Garbing backlinks could prove time consuming
-Backlink feature can use much disk --> make it optional
+** Check AI_MX_IN_REPLY_TO semantics
+** multipart/alternative with text/plain and text/html: zap HTML!
+
+** mail2kom can use recode - should we do that too?
+** Is there any need for decoding of ?B? headers?
+** Implement GC for backlinks
 ** Tests
 *** Test GC in real life situation: is it working? is it locking OK?
 *** Profile and optimize (it's rather slow now)
 ** Get rid of ugly #!/usr/bin/python-1.5.2
-** multipart/alternative with text/plain and text/html: zap HTML!
-** mail2kom can use recode - should we do that too?
-** Is there any need for decoding of ?B? headers?
- 
-* Support in the elisp client
-** Author in kom-list-summary
 
-* General
+** Client issues
+*** WinKOM
+*** JysKom
+
+* New programs
+** Batch article mover for moderators
+
+* Documentation
 ** Include GPL statements everywhere
 ** Provide Changelog and NEWS
-** Write some documentation
+** Write installation instructions w.r.t. sendmail
+** Document own aux-items (here or in Protocol-A docs)
+
+* Almost unrelated
+** mailmapper
+
+Write a program that inputs one or more letters, with a lot of
+Received:-lines, and emits a map (in VCG format) of the various paths
+used.
+

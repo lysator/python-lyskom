@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.18 2001/01/24 17:53:23 astrand Exp $
+# $Id: kom.py,v 1.19 2001/02/15 20:05:30 astrand Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -2037,18 +2037,21 @@ class CachedConnection(Connection):
     def __init__(self, host, port = 4894, user = ""):
         Connection.__init__(self, host, port, user)
 
+        # Caches
         self.uconferences = Cache(self.fetch_uconference, "UConference")
         self.conferences = Cache(self.fetch_conference, "Conference")
         self.persons = Cache(self.fetch_person, "Person")
         self.textstats = Cache(self.fetch_textstat, "TextStat")
         self.subjects = Cache(self.fetch_subject, "Subject")
 
-        self.add_async_handler(ASYNC_NEW_NAME, self.cah_conference)
-        self.add_async_handler(ASYNC_LEAVE_CONF, self.cah_conference)
-        self.add_async_handler(ASYNC_DELETED_TEXT, self.cah_textstat)
-        self.add_async_handler(ASYNC_NEW_RECIPIENT, self.cah_textstat)
-        self.add_async_handler(ASYNC_SUB_RECIPIENT, self.cah_textstat)
-        self.add_async_handler(ASYNC_DELETED_TEXT, self.cah_textstat)
+        # Setup up async handlers for invalidating cache entries.
+        self.add_async_handler(ASYNC_NEW_NAME, self.cah_new_name)
+        self.add_async_handler(ASYNC_LEAVE_CONF, self.cah_leave_conf)
+        self.add_async_handler(ASYNC_DELETED_TEXT, self.cah_deleted_text)
+        self.add_async_handler(ASYNC_NEW_TEXT, self.cah_new_text)
+        self.add_async_handler(ASYNC_NEW_RECIPIENT, self.cah_new_recipient)
+        self.add_async_handler(ASYNC_SUB_RECIPIENT, self.cah_sub_recipient)
+        self.add_async_handler(ASYNC_NEW_MEMBERSHIP, self.cah_new_membership)
 
     # Fetching functions (internal use)
     def fetch_uconference(self, no):
@@ -2072,17 +2075,46 @@ class CachedConnection(Connection):
         return subject
 
     # Handlers for asynchronous messages (internal use)
-    # (used to invalidate cache entries)
+    # FIXME: Most of these handlers should do more clever things than just
+    # invalidating. 
+    def cah_new_name(self, msg, c):
+        # A new name makes uconferences[].name invalid
+        self.uconferences.invalidate(msg.conf_no)
+        # A new name makes conferences[].name invalid
+        self.conferences.invalidate(msg.conf_no)
 
-    def cah_conference(self, msg, c):
+    def cah_leave_conf(self, msg, c):
+        # Leaving a conference makes conferences[].no_of_members invalid
+        self.conferences.invalidate(msg.conf_no)
+
+    def cah_deleted_text(self, msg, c):
+        # Deletion of a text makes conferences[].no_of_texts invalid
+        ts = msg.text_stat
+        for rcpt in ts.misc_info.recipient_list:
+            self.conferences.invalidate(rcpt.recpt)
+            
+    def cah_new_text(self, msg, c):
+        # A new text. conferences[].no_of_texts and
+        # uconferences[].highest_local_no is invalid.
+        for rcpt in msg.text_stat.misc_info.recipient_list:
+            self.conferences.invalidate(rcpt.recpt)
+            self.uconferences.invalidate(rcpt.recpt)
+        # FIXME: A new text makes persons[author].no_of_created_texts invalid
+
+    def cah_new_recipient(self, msg, c):
+        # Just like a new text; conferences[].no_of_texts and
+        # uconferences[].highest_local_no gets invalid. 
         self.conferences.invalidate(msg.conf_no)
         self.uconferences.invalidate(msg.conf_no)
 
-    def cah_textstat(self, msg, c):
-        self.textstats.invalidate(msg.text_no)
-        self.subjects.invalidate(msg.text_no)
-        
+    def cah_sub_recipient(self, msg, c):
+        # Invalid conferences[].no_of_texts
+        self.conferences.invalidate(msg.conf_no)
 
+    def cah_new_membership(self, msg, c):
+        # Joining a conference makes conferences[].no_of_members invalid
+        self.conferences.invalidate(msg.conf_no)
+    
     # Report cache usage
     def report_cache_usage(self):
         self.uconferences.report()
@@ -2148,13 +2180,109 @@ class CachedConnection(Connection):
                 for tuple in mapping.list:
                     if tuple[0] not in ms.read_texts:
                         unread.append(tuple)
+                        ask_for = mapping.range_end
+                        more_to_fetch = mapping.later_texts_exists
+            except NoSuchLocalText:
+                # No unread texts
+                more_to_fetch = 0
+
+        return unread
+
+
+class CachedUserConnection(CachedConnection):
+    def __init__(self, host, port = 4894, user = ""):
+        CachedConnection.__init__(self, host, port, user)
+
+        # User number
+        self.user_no = 0
+        # List with those conferences the user is member of
+        self.member_confs = []
+
+        # Caches
+        self.memberships = Cache(self.fetch_membership, "Membership")
+        self.no_unread = Cache(self.fetch_unread, "Number of unread")
+        # FIXME: Add support for aux-items, session-information, textmappings etc.
+        
+    def set_user(self, user_no):
+        self.user_no = user_no
+        self.member_confs = self.get_member_confs()
+
+    def get_member_confs(self):
+        result = []
+        # FIXME: Change want_read_texts to 0 as soon as we supports it. 
+        ms_list = ReqGetMembership(self, self.user_no, 0, 10000, want_read_texts=1).response()
+        for ms in ms_list:
+            if (ms.priority != 0) and (not ms.type.passive):
+                result.append(ms.conference)
+        return result
+        
+    def fetch_membership(self, no):
+        return ReqQueryReadTexts(self, self.user_no, no).response()
+    
+    # NOTE: No more than 500 unread texts are examined
+    def fetch_unread(self, no):
+        no_unread = 0
+        ms = self.memberships[no]
+
+        # Start asking for translations
+        ask_for = ms.last_text_read + 1
+        more_to_fetch = 1
+        while more_to_fetch:
+            try:
+                mapping = ReqLocalToGlobal(self, no,
+                                           ask_for, 255).response()
+                for (local_num, global_num) in mapping.list:
+                    if (local_num not in ms.read_texts) and global_num:
+                        no_unread = no_unread + 1
+                        if no_unread > 500:
+                            return no_unread
                 ask_for = mapping.range_end
                 more_to_fetch = mapping.later_texts_exists
             except NoSuchLocalText:
                 # No unread texts
                 more_to_fetch = 0
 
-        return unread
+        return no_unread
+
+    # Handlers for asynchronous messages (internal use)
+    def cah_deleted_text(self, msg, c):
+        CachedConnection.cah_deleted_text(self, msg, c)
+        ts = msg.text_stat
+        for rcpt in ts.misc_info.recipient_list:
+            if rcpt.recpt in self.member_confs:
+                self.no_unread[rcpt.recpt] = self.no_unread[rcpt.recpt] - 1
+            
+    def cah_new_text(self, msg, c):
+        CachedConnection.cah_new_text(self, msg, c)
+        for rcpt in msg.text_stat.misc_info.recipient_list:
+            if rcpt.recpt in self.member_confs:
+                self.no_unread[rcpt.recpt] = self.no_unread[rcpt.recpt] + 1
+
+    def cah_leave_conf(self, msg, c):
+        CachedConnection.cah_leave_conf(self, msg, c)
+        self.member_confs.remove(msg.conf_no)
+        
+    def cah_new_recipient(self, msg, c):
+        CachedConnection.cah_new_recipient(self, msg, c)
+        if msg.conf_no in self.member_confs:
+            self.no_unread[msg.conf_no] = self.no_unread[msg.conf_no] + 1
+        
+    def cah_sub_recipient(self, msg, c):
+        CachedConnection.cah_sub_recipient(self, msg, c)
+        if msg.conf_no in self.member_confs:
+            self.no_unread[msg.conf_no] = self.no_unread[msg.conf_no] - 1
+
+    def cah_new_membership(self, msg, c):
+        CachedConnection.cah_new_membership(self, msg, c)
+        if msg.person_no == self.user_no:
+            self.member_confs.append(msg.conf_no)
+
+    # Report cache usage
+    def report_cache_usage(self):
+        CachedConnection.report_cache_usage(self)
+        self.memberships.report()
+        self.no_unread.report()
+        
 
 # Cache class for use internally by CachedConnection
 class Cache:
@@ -2173,6 +2301,9 @@ class Cache:
             self.uncached = self.uncached + 1
             self.dict[no] = self.fetcher(no)
             return self.dict[no]
+
+    def __setitem__(self, no, val):
+        self.dict[no] = val
 
     def invalidate(self, no):
         if self.dict.has_key(no):

@@ -1,10 +1,11 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.21 2001/06/16 18:28:26 astrand Exp $
+# $Id: kom.py,v 1.22 2001/06/27 19:27:19 astrand Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
 import time
 import string
+import select
 
 #
 # Constants
@@ -1810,6 +1811,11 @@ class Connection:
             del self.error_queue[id]
             raise error_dict[error_no], error_status
 
+    # Parse all present data
+    def parse_present_data(self):
+        while select.select([self.socket], [], [], 0)[0]:
+            self.parse_server_message()
+            
     # Enable request histogram
     def enable_req_histo(self):
         self.req_histo = {}

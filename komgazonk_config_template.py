@@ -14,10 +14,16 @@ KOMPASSWORD = "FIXME"      # Password of KOMPERSON
 # The conference to send letters to, with clues and such things.
 GAZONK_CONF = FIXME
 
+# File to make a dump of the gazonk object to. Good to have for restorage
+# if the program or LysKOM crashes.
+DUMPFILE = "/FIXME/gazonkdump.p"
+# Set to true if we should dump in binary format.
+DUMPBIN = 0
+
 # File to log some information into. Make sure the user executing
 # komgazonk has write-permissions in the directory where this file
 # resides.
-LOGFILE = "/FIXME/maillog"
+LOGFILE = "/FIXME/log"
 # Set to one if you want to log things in a file.
 LOG = 0
 

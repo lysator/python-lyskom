@@ -9,13 +9,17 @@ import time
 import select
 import string
 import os
+import os.path
 import re
 from komgazonk_config import *
+import cPickle
 
 CLIENTNAME="komgazonk"
-VERSION="0.0.1"
+VERSION="0.1.0"
 
 INVISIBLE = 1
+
+MAX_ENTRIES_GUESS_LIST = 10
 
 class Gazonk:
     re_auto_reply = re.compile("^Auto-reply:", re.IGNORECASE)
@@ -32,6 +36,7 @@ class Gazonk:
 
     def __init__(self):
         self.reset()
+        self.all_guesses = {}
 
     def reset(self):
         self.person_no = -1
@@ -41,6 +46,7 @@ class Gazonk:
         self.time_last_action = -1
         self.warnings_sent = 0
         self.last_text_no = -1
+        self.current_guesses = {}
 
     def set_last_action(self):
         self.time_last_action = time.time()
@@ -55,6 +61,21 @@ class Gazonk:
         print "Current clue: %d" % self.current_clue
         print "Time for last action: " + str(self.time_last_action)
         print "Num warnings sent: %d" % self.warnings_sent
+
+    def create_guess_list_string(self, max_nr = MAX_ENTRIES_GUESS_LIST, current = 1):
+        guess_list = []
+        if current == 1:
+            guess_list = zip(self.current_guesses.values(), self.current_guesses.keys())
+        else:
+            guess_list = zip(self.all_guesses.values(), self.all_guesses.keys())
+        guess_list.sort()
+        guess_list.reverse()
+
+        guess_string = ""
+        for (amount, guess) in guess_list[:max_nr]:
+            guess_string += string.ljust(guess + ":", min(GAZ_PW_LENGTH + 10, 60)) + \
+                            " " + str(amount) + "\n"
+        return guess_string
 
     def create_clue_string(self, disp_all):
         clues = self.clues
@@ -72,6 +93,14 @@ class Gazonk:
             i += 1
             clue_string += str(i) + ". " + c + "\n"
         return clue_string
+
+    def create_end_of_round_message(self):
+        mess_text = "Lösenordet var '%s'.\n\n" % self.password
+        mess_text += "Alla ledtrådar (givna och icke givna):\n"
+        mess_text += self.create_clue_string(1)
+        mess_text += "\n\nTop %d gissningar:\n" % MAX_ENTRIES_GUESS_LIST
+        mess_text += self.create_guess_list_string(MAX_ENTRIES_GUESS_LIST)
+        return mess_text
 
     def send_next_clue_letter(self, dont_increase = 0):
         new = 0
@@ -152,9 +181,9 @@ class Gazonk:
                                  "fråntagen din gazonktitel!",
                                  self.person_no, 1, 1)
                 message = "Vem som helst kan nu bli gazonk. Skicka bara 'ny gazonk'" + \
-                          "\ni ett meddelande till <Person %d: %s>\n\n" % (KOMPERSON, my_name)
+                          "\ni ett meddelande till <Person %d: %s>" % (KOMPERSON, my_name)
                 if len(self.password) > 0 and len(self.clues) > 0:
-                    message += "Föregående lösenord var '%s'." % self.password
+                    message += "\n\n" + self.create_end_of_round_message()
 
                 self.send_letter("<Person %d: %s> ej längre gazonk!" % \
                                  (self.person_no, gaz_name),
@@ -200,8 +229,10 @@ class Gazonk:
             ma = Gazonk.re_losenord_a.search(msg.message)
             mb = Gazonk.re_losenord_b.match(msg.message)
             # Vi får enbart sätta lösenordet om omgången ej är startad än.
+            # Skicka tillbaka lösenordet istället.
             if ma and self.current_clue > -1:
-                send_message("Ledtrådar är redan givna, så du kan inte ändra lösenordet nu.", \
+                send_message("Har du blivit senil? Nuvarande lösenord är '%s'." % \
+                             self.password, \
                              msg.sender)
                 return
             elif ma and mb:
@@ -298,21 +329,38 @@ class Gazonk:
             # Har vi gissat rätt lösenord?
             m = Gazonk.re_gissa.match(msg.message)
             sm = msg.message.strip()
-            if (m and m.group(1) == self.password) or (sm == self.password):
+
+            guess = sm
+            if m:
+                guess = m.group(1)
+
+            # Lägg till gissningen i den totala gissningsdatabasen.
+            if not self.all_guesses.has_key(guess):
+                self.all_guesses[guess] = 1
+            else:
+                self.all_guesses[guess] += 1
+
+            # Lägg till gissningen i gissningsdatabasen för den nuvarande omgången.
+            if not self.current_guesses.has_key(guess):
+                self.current_guesses[guess] = 1
+            else:
+                self.current_guesses[guess] += 1
+
+            if guess == self.password:
                 send_message("Grattis, Du gissade rätt!\nDu är nu ny gazonk!", msg.sender)
                 gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
                 new_gaz_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
                 mess_subject = "<Person %d: %s> gazonkar" % (self.person_no, gaz_name)
                 mess_text = "<Person %d: %s> klarade lösenordet och är ny gazonk!\n\n" % \
                             (msg.sender, new_gaz_name)
-                mess_text += "Lösenordet var '%s'." % self.password
+                mess_text += self.create_end_of_round_message()
                 self.send_letter(mess_subject, mess_text, GAZONK_CONF, 0, 0)
                 self.reset()
                 self.person_no = msg.sender
                 self.set_last_action()
                 return
             else:
-                send_message("Fel, fel, fel ,fel!", msg.sender)
+                send_message("Fel, fel, fel, fel!", msg.sender)
                 return
 
         # Detta kommando var inte begripligt
@@ -356,7 +404,12 @@ logfile = open(LOGFILE, "a")
 log("Starting")
 
 # Skapa en gazonk-information
-gaz = Gazonk();
+if os.path.exists(DUMPFILE):
+    gaz = cPickle.load(open(DUMPFILE))
+    gaz.all_guesses = getattr(gaz, 'all_guesses', {})
+    gaz.current_guesses = getattr(gaz, 'current_guesses', {})
+else:
+    gaz = Gazonk();
 
 # Koppla upp sig, logga in och annat kul
 log("Kopplar upp")
@@ -375,4 +428,5 @@ while 1:
     select.select([conn.socket], [], [], MAX_SLEEP_TIME)
     conn.parse_present_data()
     gaz.check_clues()
-    #gaz.print_me()
+    cPickle.dump(gaz, open(DUMPFILE, 'w'), DUMPBIN)
+#    gaz.set_last_action()

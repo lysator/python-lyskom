@@ -74,6 +74,8 @@ HACKER SUMMARY
   learn server address, server port, person name/number and password
   from environment variables and/or a "~/.komrc" file.
 
+- komconfstats givs you statistics about a conference.
+
 
 COPYRIGHT
 

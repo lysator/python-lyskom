@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.10 1999/07/16 22:22:31 kent Exp $
+# $Id: kom.py,v 1.11 1999/07/23 13:00:10 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -188,6 +188,13 @@ AI_MX_ALLOW_FILTER = 25 # (conference)
 AI_MX_REJECT_FORWARD = 26 # (conference)
 AI_NOTIFY_COMMENTS = 27 # (letterbox)
 AI_FAQ_FOR_CONF = 28 # (text)
+
+# Experimental items
+AI_MX_MIME_MISC = 28000
+AI_MX_MIME_BELONGS_TO = 28001
+AI_MX_MIME_CONTENT_TYPE = 28002
+AI_MX_ENVELOPE_SENDER = 28003
+AI_MX_MIME_FILE_NAME = 28004
 
 #
 # Classes for requests to the server are all subclasses of Request.

@@ -1,6 +1,6 @@
 #!/usr/bin/python-1.5.2
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.6 1999/07/23 13:17:58 kent Exp $
+# $Id: komimportmail,v 1.7 1999/07/23 18:20:38 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -21,13 +21,18 @@ KOMSERVER = "localhost"
 KOMPORT = 4894
 KOMPERSON = 21
 KOMPASSSWORD = "eppelpost"
+
 LOGFILE = "/home/kent/lyskom/python-lyskom/maillog"
 ID_DB_FILE = "/home/kent/lyskom/python-lyskom/message-id"
+
 APPENDIX_TEXT_NONAME = "Bilaga till: "
 APPENDIX_TEXT = "Bilaga (%s) till: "
 
+APPENDIX_COMMENT_TYPE = kom.MIC_COMMENT
+#APPENDIX_COMMENT_TYPE = kom.MIC_FOOTNOTE
+
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.6 $"
+vc_revision = "$Revision: 1.7 $"
 revision = vc_revision[11:-2]
 
 # Error reporting
@@ -141,7 +146,7 @@ def create_article(envelope_sender,
     # email.
     
     if parent is not None:
-        mic = kom.MICommentTo(kom.MIC_COMMENT, parent)
+        mic = kom.MICommentTo(APPENDIX_COMMENT_TYPE, parent)
         misc_info.comment_to_list.append(mic)
         aux_items.append(kom.AuxItem(kom.AI_MX_MIME_BELONGS_TO, str(parent)))
         

@@ -9,7 +9,7 @@ import komparam
 import sys
 import getopt
 
-__version__ = "$Revision: 1.1 $"
+__version__ = "$Revision: 1.2 $"
 
 def calculate(conn, starttext, endtext, toplen):
     forbidden = 0
@@ -81,7 +81,7 @@ if '__main__' == __name__:
                 firsttext = int(f.readline())
                 f.close()
             except IOError:
-                print "Couldn't open %s for reading"
+                print "Couldn't open %s for reading" % optarg
                 sys.exit(1)
         elif '--lasttext' == opt:
             lasttext = int(optarg)
@@ -147,8 +147,8 @@ if '__main__' == __name__:
         plural = ""
         if mark[1] > 1:
             plural = "ar"
-        txt+="<text %d> med %d markering%s av %s\n" % (mark[0], mark[1],
-                                                       plural, name)
+        txt+="<text %d> av %s med %d markering%s\n" % (mark[0], name,
+                                                    mark[1], plural)
         textdata = kom.ReqGetText(conn, mark[0], 0,
                                   conn.textstats[mark[0]].no_of_chars).response()
         subj = textdata.split('\n')[0]

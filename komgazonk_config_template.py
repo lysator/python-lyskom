@@ -76,4 +76,7 @@ GAZ_CORRECT_IN_END_MESSAGE = 1
 # Set to 2 to forbid using old passwords.
 GAZ_USING_OLD_PASSWORDS = 1
 
+# How many clues to show their expected times of arrival for.
+GAZ_AMOUNT_CLUE_TIMES = 4
+
 # -- CONFIGURATION ENDS HERE ---

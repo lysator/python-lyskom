@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.2"
+VERSION="0.3.3"
 
 INVISIBLE = 1
 
@@ -71,19 +71,25 @@ wrong_guess_list = ["Fel, fel, fel, fel!", \
                     "Du kanske skulle fråga skräphögen om råd.", \
                     "Det är aldrig försent att ge upp."]
 
-help_string = """Möjliga kommandon:
-------------------
+help_strings = {"": """Grundläggande kommandon:
+------------------------
 'hjälp':              Skicka detta hjälpmeddelande.
+'hjälp kommandon':    Skicka ett hjälpmeddelande om vanliga kommandon.
+'hjälp gazonk':       Skicka ett hjälpmeddelande om kommandon för gazonk.
 'hjälp statistik':    Skicka ett hjälpmeddelande om statistiken.
+'gissa <gissning>:    Gissa på lösenordet.
+'<gissning>:          Samma som ovan.""", \
+                "kommandon": """Vanliga kommandon:
+------------------
 'vem':                Talar om vem som är gazonk.
 'visa':               Listar givna ledtrådar.
+'ny gazonk':          Bli gazonk, om ingen är gazonk redan.
 'nästa':              Talar om hur långt det är kvar till nästa ledtråd.
 'gamla lösenord':     Visar en lista på de 50 senaste lösenorden.
 'statistik':          Visar lite staitistik om ditt gazonkande.
-'statistik <person>': Visar statistik om given person.
-
-Om du är gazonk:
-----------------
+'statistik <person>': Visar statistik om given person.""", \
+                "gazonk": """Kommandon för gazonk:
+---------------------
 'lösenord':                     Visar lösenord om omgången är startad.
 'lösenord <nytt lösenord>':     Byter lösenord då omgång ej är startad.
 'ledtråd':                      Visar alla ledtrådar.
@@ -98,15 +104,10 @@ Om du är gazonk:
 'tidsintervall <antal>[hms]':   Sätter tidsintervallet som ledtrådar
                                 skall komma med.
 'återställ tidsintervall':      Återställer tidsintervallet till det det
-                                var från början.
-
-Om du inte är gazonk:
----------------------
-'gissa <gissning>:              Gissa på lösenordet.
-'<gissning>:                    Samma som ovan.
-'ny gazonk':                    Bli gazonk, om ingen är gazonk redan."""
-
-help_stats_string = """Gissn  = antal gissningar
+                                var från början.""", \
+                "statistik": """Hjälp över statistik-förkortningar:
+-----------------------------------
+Gissn  = antal gissningar
 Korr   = antal korrekta gissningar
 k/g    = andel korrekta gissningar (procent)
 Led    = antal ledtrådar som behövts i snitt för att klara lösenordet
@@ -119,28 +120,30 @@ g/l    = antal gissningar i snitt per given ledtråd för att
          klara ett lösenord
 Gg/l   = antal gissningar i snitt per given ledtråd motståndarna
          behöver för att klara lösenordet när personen är gazonk
-Person = för denna person"""
+Person = för denna person"""}
 
 
 class Gazonk:
     re_auto_reply = re.compile("^Auto-reply:", re.IGNORECASE)
     re_ny_gazonk = re.compile("^ny gazonk$", re.IGNORECASE)
-    re_losenord_a = re.compile("^lösenord", re.IGNORECASE)
+    re_losenord_a = re.compile("^l[Öö]senord", re.IGNORECASE)
     re_losenord_b = re.compile("^[Ll][Öö][Ss][Ee][Nn][Oo][Rr][Dd] *([" + GAZ_PW_CHARS + \
                                "]{1," + str(GAZ_PW_LENGTH) + "}) *$")
     re_gissning = re.compile("^[" + GAZ_PW_CHARS + "]{1," + str(GAZ_PW_LENGTH) + "}$")
-    re_ledtrad = re.compile("^ledtråd( *| +(.+))$", re.IGNORECASE)
-    re_byt_ledtrad = re.compile("^byt ledtråd +([0-9]+) +(.+)$", re.IGNORECASE)
-    re_gissningar = re.compile("^gissningar *([0-9]*|personer)$")
-    re_tidsintervall = re.compile("^tidsintervall *([0-9]*)([hms]) *$")
-    re_ater_tidsintervall = re.compile("^återställ tidsintervall$")
-    re_gissa = re.compile("^gissa *(.*) *$")
+    re_ledtrad = re.compile("^ledtr[Åå]d( *| +(.+))$", re.IGNORECASE)
+    re_byt_ledtrad = re.compile("^byt ledtr[Åå]d +([0-9]+) +(.+)$", re.IGNORECASE)
+    re_satt_in_ledtrad = re.compile("^s[Ää]tt in ledtr[Åå]d +([0-9]+) +(.+)$", re.IGNORECASE)
+    re_ta_bort_ledtrad = re.compile("^ta bort ledtr[Åå]d +([0-9]+)$", re.IGNORECASE)
+    re_gissningar = re.compile("^gissningar *([0-9]*|personer)$", re.IGNORECASE)
+    re_tidsintervall = re.compile("^tidsintervall *([0-9]*)([hms]) *$", re.IGNORECASE)
+    re_ater_tidsintervall = re.compile("^[Åå]terst[Ää]ll tidsintervall$", re.IGNORECASE)
+    re_gissa = re.compile("^[Gg][Ii][Ss][Ss][Aa] *(.*) *$")
     re_vem = re.compile("^vem$", re.IGNORECASE)
     re_visa = re.compile("^visa$", re.IGNORECASE)
-    re_nasta = re.compile("^nästa$", re.IGNORECASE)
-    re_hjalp = re.compile("^hjälp$", re.IGNORECASE)
-    re_hjalp_statistik = re.compile("^hjälp statistik$", re.IGNORECASE)
-    re_gamla_losenord = re.compile("^gamla lösenord$", re.IGNORECASE)
+    re_nasta = re.compile("^n[Ää]sta$", re.IGNORECASE)
+    re_hjalp = re.compile("^hj[Ää]lp *(" + string.join(help_strings.keys(),"|") + ")$", \
+                          re.IGNORECASE)
+    re_gamla_losenord = re.compile("^gamla l[Öö]senord$", re.IGNORECASE)
     re_statistik = re.compile("^statistik *(.*) *$", re.IGNORECASE)
 
     def __init__(self):
@@ -246,6 +249,18 @@ class Gazonk:
 
         return who_string
 
+    def create_next_clues_string(self):
+        nc_times = get_next_clue_time(self.time_last_action, \
+                                      self.current_time_interval, \
+                                      GAZ_AMOUNT_CLUE_TIMES)
+        nc_times_str = format_times(nc_times, self.time_last_action)
+        cl = self.current_clue + 1
+        result = ""
+        for tstr in nc_times_str:
+            cl += 1
+            result += "Ledtråd %d förväntas komma %s.\n" % (cl, tstr)
+        return result
+
     def send_end_of_round_message(self, subject, message):
         self.tstats.end_round()
         message += "\n\nLösenordet var '%s'.\n\n" % self.password
@@ -269,10 +284,15 @@ class Gazonk:
         gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
         mess_subject = "%s gazonkar" % shorten_name(gaz_name)
         mess_text = self.create_clue_string(0)
+        mess_text += "------------\n" + self.create_next_clues_string()
         self.send_letter(mess_subject, mess_text, GAZONK_CONF, new, 0)
 
-    def send_clue_message(self, recipient, disp_all):
-        send_string = "Ledtrådar:\n\n"
+    def send_clue_message(self, recipient, disp_all, extra_message = None):
+        send_string = ""
+        if extra_message != None:
+            send_string = extra_message + "\n\n"
+        send_string += "Ledtrådar:\n"
+        send_string += "----------\n"
         send_string += self.create_clue_string(disp_all)
 
         send_message(send_string, recipient)
@@ -309,8 +329,8 @@ class Gazonk:
         if len(self.password) > 0 and \
            len(self.clues) > 0 and \
            self.current_clue == -1:
-            self.send_next_clue_letter()
             self.set_last_action()
+            self.send_next_clue_letter()
             self.warnings_sent = 0
             self.tstats.new_round()
             return
@@ -324,8 +344,8 @@ class Gazonk:
         if self.current_clue > -1 and \
            len(self.clues) > self.current_clue + 1 and \
            current_time - self.time_last_action > self.current_time_interval:
-            self.send_next_clue_letter()
             self.set_last_action()
+            self.send_next_clue_letter()
             self.warnings_sent = 0
             return
 
@@ -381,15 +401,9 @@ class Gazonk:
             return
 
         # Behöver man hjälp?
-        m = Gazonk.re_hjalp.search(msg.message)
+        m = Gazonk.re_hjalp.match(msg.message)
         if m:
-            send_message(help_string, msg.sender)
-            return
-
-        # Behöver man hjälp med statistiken?
-        m = Gazonk.re_hjalp_statistik.search(msg.message)
-        if m:
-            send_message(help_stats_string, msg.sender)
+            send_message(help_strings[m.group(1)], msg.sender)
             return
 
         # Saker som endast kan göras om ingen gazonk finns:
@@ -417,15 +431,15 @@ class Gazonk:
                 return
             elif ma and mb:
                 pw = mb.group(1)
+                extra_message = ""
                 if GAZ_USING_OLD_PASSWORDS > 0 and \
                        self.password_history.count(pw) > 0:
                     if GAZ_USING_OLD_PASSWORDS == 1:
-                        send_message("Detta lösenord har använts nyligen.\n" \
-                                     "Är du säker på att du vill använda det igen?\n\n" \
-                                     "Du kan fortfarande ändra på lösenordet om du vill.\n" \
-                                     "Använd kommandot 'gamla lösenord' för att se en lista\n" \
-                                     "på lösenord som använts nyligen.", \
-                                     msg.sender)
+                        extra_message = "Detta lösenord har använts nyligen.\n" \
+                                        "Är du säker på att du vill använda det igen?\n\n" \
+                                        "Du kan fortfarande ändra på lösenordet om du vill.\n" \
+                                        "Använd kommandot 'gamla lösenord' för att se en lista\n" \
+                                        "på lösenord som använts nyligen.\n\n"
                     if GAZ_USING_OLD_PASSWORDS == 2:
                         send_message("Detta lösenord har använts nyligen.\n" \
                                      "Detta är inte tillåtet, var snäll och använd ett annat.\n\n" \
@@ -440,7 +454,8 @@ class Gazonk:
                 self.warnings_sent = 0
                 self.last_text_no = 0
                 self.set_last_action()
-                send_message("Nytt lösenord är '%s'." % self.password, msg.sender)
+                send_message(extra_message + "Nytt lösenord är '%s'." % self.password, \
+                             msg.sender)
                 return
             elif ma:
                 send_message("Ditt lösenord godkändes ej.\n\n" + \
@@ -463,7 +478,7 @@ class Gazonk:
                 self.send_clue_message(msg.sender, 1)
                 return
 
-            # Skall byta ut en ledtråd?
+            # Skall en ledtråd bytas ut?
             m = Gazonk.re_byt_ledtrad.match(msg.message)
             if m and len(self.password) == 0:
                 send_message("Skriv in lösenord innan du skriver in ledtrådar.", msg.sender)
@@ -471,15 +486,57 @@ class Gazonk:
             elif m:
                 nr = int(m.group(1))
                 clue = m.group(2)
-                if nr > len(self.clues):
+                if nr < 1 or nr > len(self.clues):
                     send_message("Ledtrådsnumret finns inte.", msg.sender)
                     return
                 elif nr > 0:
                     self.clues[nr-1] = clue
-                    send_message("Ledtråd %d byttes ut till: %s" % (nr, clue), msg.sender)
+                    message = "Ledtråd %d byttes ut till: %s" % (nr, clue)
+                    self.send_clue_message(msg.sender, 1, extra_message = message)
                     if nr <= self.current_clue + 1:
                         self.send_next_clue_letter(1)
                     return
+
+            # Skall en ledtråd läggas till?
+            m = Gazonk.re_satt_in_ledtrad.match(msg.message)
+            if m and len(self.password) == 0:
+                nr = int(m.group(1))
+                clue = m.group(2)
+                message = ""
+                if nr > len(self.clues):
+                    self.clues.append(clue)
+                    message = "Ledtråden sattes in sist: %s" % clue
+                elif nr <= self.current_clue + 1:
+                    send_message("Kan inte sätta in en ledtråd där. Det är enbart tillåtet\n" \
+                                 "att sätta in ledtrådar efter de som redan visats.", \
+                                 msg.sender)
+                else:
+                    self.clues[nr-1:nr-1] = [clue]
+                    message = "Ledtråden sattes in på position %d: %s" % (nr, clue)
+
+                self.send_clue_message(msg.sender, 1, extra_message = message)
+                return
+
+
+            # Skall en ledtråd läggas till?
+            m = Gazonk.re_ta_bort_ledtrad.match(msg.message)
+            if m and len(self.password) == 0:
+                nr = int(m.group(1))
+                message = ""
+                if nr < 1 or nr > len(self.clues):
+                    send_message("Ledtråden finns inte och kan därmed inte tas bort.", \
+                                 msg.sender)
+                    message = "Ledtråden sattes in sist: %s" % clue
+                elif nr <= self.current_clue + 1:
+                    send_message("Kan inte ta bort en ledtråd där. Det är enbart tillåtet\n" \
+                                 "att ta bort ledtrådar efter de som redan visats.", \
+                                 msg.sender)
+                else:
+                    self.clues[nr-1:nr] = []
+                    message = "Tog bort ledtråd nummer %d." % nr
+
+                self.send_clue_message(msg.sender, 1, extra_message = message)
+                return
 
             # Visa gissningar för olika personer.
             m = Gazonk.re_gissningar.match(msg.message)
@@ -506,7 +563,7 @@ class Gazonk:
                 return
 
             # Ställ om tidsintervallet.
-            ch_interval = 0
+            new_interval = 0
             m = Gazonk.re_tidsintervall.match(msg.message)
             if m:
                 amount = int(m.group(1))
@@ -518,19 +575,28 @@ class Gazonk:
 
                 amount = min(amount, GAZONK_CT_MAXIMUM)
                 amount = max(amount, GAZONK_CT_MINIMUM)
-                self.current_time_interval = amount
-                ch_interval = 1
+                new_interval = amount
 
             # Ställ tillbaka tidsintervallet.
             m = Gazonk.re_ater_tidsintervall.search(msg.message)
             if m:
-                self.current_time_interval = GAZONK_CLUE_TIME
-                ch_interval = 1
+                new_interval = GAZONK_CLUE_TIME
 
-            if ch_interval:
-                send_message("Tidsintervallet är nu %s mellan varje ledtråd." % \
-                             format_hms(self.current_time_interval, 2), \
-                             msg.sender)
+            if new_interval > 0:
+                if new_interval != self.current_time_interval:
+                    self.current_time_interval = new_interval
+                    ti_format = format_hms(self.current_time_interval, 2)
+                    send_message("Tidsintervallet är nu %s mellan varje ledtråd." % ti_format, \
+                                 msg.sender)
+                    gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                    subject = "%s gazonkar" % shorten_name(gaz_name)
+                    message = "Tidsintervallet melan ledtrådar har ändrats och \när nu %s\n\n" % \
+                              ti_format
+                    message += self.create_next_clues_string()
+                    self.send_letter(subject, message, GAZONK_CONF, 0, 0)
+                else:
+                    send_message("Tidsintervallet är samma som förut. Ingen förändring.", \
+                                 msg.sender)
                 return
 
         # Saker som alla får göra:
@@ -561,26 +627,25 @@ class Gazonk:
             current_time = time.time()
             if self.current_clue == -1:
                 send_message("Ingen gazonk-omgång pågår just nu.", msg.sender)
-                return
-            elif self.is_night:
-                current_hour = time.localtime(current_time).tm_hour
-                while GAZ_SLEEP_HOURS.count(current_hour) > 0:
-                    current_hour += 1
-                send_message("Just nu är gazonk i natt-läge och " + \
-                             "då skickas inga nya ledtrådar.\n" + \
-                             "Gazonk kommer övergå i dagläge igen kl. %d:00" % current_hour, \
-                             msg.sender)
-                return
-            elif current_time - self.time_last_action > self.current_time_interval:
-                send_message("Nästa ledtråd borde redan ha sänts, tjata på gazonk!", msg.sender)
-                return
             else:
-                next_clue_time = self.time_last_action + \
-                                 self.current_time_interval - current_time
-                message = "Det är %s kvar till nästa ledtråd." % \
-                          format_hms(next_clue_time,1)
-                send_message(message, msg.sender)
-                return
+                nc_times = get_next_clue_time(self.time_last_action, \
+                                              self.current_time_interval, \
+                                              GAZ_AMOUNT_CLUE_TIMES)
+
+                if nc_times[0] < current_time:
+                    send_message("Nästa ledtråd borde redan ha sänts, tjata på gazonk!", \
+                                 msg.sender)
+                else:
+                    time_left = nc_times[0] - current_time
+                    message = "Det är %s kvar till nästa ledtråd.\n\n" % \
+                              format_hms(time_left,1)
+                    nc_times_str = format_times(nc_times[1:], nc_times[0])
+                    cl = self.current_clue + 2
+                    for tstr in nc_times_str:
+                        cl += 1
+                        message += "Ledtråd %d förväntas komma %s.\n" % (cl,tstr)
+                    send_message(message, msg.sender)
+            return
 
         # Visa de 50 senaste lösenorden.
         m = Gazonk.re_gamla_losenord.search(msg.message)
@@ -1121,6 +1186,46 @@ def format_hms(sec_amount, secs_method = 1):
         return "%s och %s" % (parts[0], parts[1])
 
     return "%s" % (parts[0])
+
+# Formattera en sträng av varje tid på ett fint sätt ("10:40 imorgon" t.ex.)
+def format_times(time_list, relative_to_time):
+    rtt = relative_to_time
+    result = []
+    for t in time_list:
+        tl = time.localtime(t)
+        time_string = "%s:%s" % (string.zfill(str(tl.tm_hour), 2), \
+                                 string.zfill(str(tl.tm_min), 2))
+        day_diff = t // 86400 - rtt // 86400
+        if day_diff > 0:
+            if day_diff == 1:
+                time_string += " nästa dag"
+            else:
+                time_string += " %d dagar senare" % day_diff
+        rtt = t
+        result.append(time_string)
+    return result
+
+# Tar utifrån föregående tid och tidsintervallet reda på när nästa ledtråd borde komma.
+def get_next_clue_time(start_time, time_interval, amount):
+    from_time = start_time
+    if GAZ_SLEEP_HOURS.count(time.localtime(start_time).tm_hour) > 0:
+        from_time -= float(time.localtime(start_time).tm_min)*60.0
+    result = []
+    for nr in range(amount):
+        cur_hour = time.localtime(from_time).tm_hour
+        end_hour = cur_hour + int(time_interval)/3600
+        if divmod(end_hour,24)[1] != time.localtime( from_time + float(time_interval) ).tm_hour:
+            end_hour += 1
+        add_hours = 0
+        while cur_hour <= end_hour:
+            if GAZ_SLEEP_HOURS.count(divmod(cur_hour,24)[1]) > 0:
+                end_hour += 1
+                add_hours += 1
+            cur_hour += 1
+        end_time = from_time + float(time_interval) + float(add_hours)*3600.0
+        result.append( end_time )
+        from_time = end_time
+    return result
 
 # Divide
 def divide_with_zero(a,b):

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some word statistics about a conference
-# $Id: komconfwords,v 1.9 2001/04/17 17:17:11 kent Exp $
+# $Id: komconfwords,v 1.10 2001/06/09 21:20:07 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -25,7 +25,7 @@ import whrandom
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.9 $"
+vc_revision = "$Revision: 1.10 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -47,8 +47,8 @@ def exit():
 # Split a text into lower case words (removing the subject line!)
 #
 
-upper2lower = string.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ",
-                               "abcdefghijklmnopqrstuvwxyzåäö")
+upper2lower = string.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖØ",
+                               "abcdefghijklmnopqrstuvwxyzåäöø")
 def split_text_dehyphen(s):
     return re.sub("(^-*)|(-*$)", "", s)
 
@@ -58,7 +58,7 @@ def split_text_into_words(text):
         text = text[first_nl+1:]
     text = string.translate(text, upper2lower)
     words = filter(None, map(split_text_dehyphen,
-                             re.split("[^a-zåäö-]+", text)))
+                             re.split("[^a-zåäöø-]+", text)))
     return words
 
 # Handle counts and nouns

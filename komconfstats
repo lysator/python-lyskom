@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.15 2002/01/27 21:35:05 kent Exp $
+# $Id: komconfstats,v 1.16 2002/02/01 12:54:57 _cvs_petli Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import jddate # From the lyspython collection
 import tabulator
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.15 $"
+vc_revision = "$Revision: 1.16 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -142,7 +142,9 @@ class TimeBinHistogram(tabulator.BinHistogram):
                      (     15, "15-30 s"),
                      (     30, "30-45 s"),
                      (     45, "45-60 s"),
-                     (     60, " 1- 5 m"),
+                     (     60, " 1- 2 m"),
+                     (    120, " 2- 3 m"),
+                     (    180, " 3- 5 m"),
                      (    300, " 5-10 m"),
                      (    600, "10-15 m"),
                      (    900, "15-30 m"),

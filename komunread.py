@@ -1,6 +1,6 @@
 #!/usr/bin/python
-# Show unread letters
-# $Id: komunread.py,v 1.1 1999/07/23 18:16:33 kent Exp $
+# Show some information around unread letters (or articles)
+# $Id: komunread.py,v 1.2 2001/01/02 09:37:28 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom
@@ -10,7 +10,7 @@ import getopt
 import string
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.1 $"
+vc_revision = "$Revision: 1.2 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -28,38 +28,6 @@ def success(str):
 def exit():
     sys.exit(exit_code)
 
-#
-# Get unread texts for a certain person in a certain conference
-# Return a list of tuples (local no, global no)
-#
-# FIXME: This should be part of CachedConnection or another
-# subclass/mixin of Connection.
-
-def get_unread_texts(person_no, conf_no):
-    # Start list
-    unread = []
-    
-    # Get membership record
-    ms = kom.ReqQueryReadTexts(conn, person_no, conf_no).response()
-
-    # Start asking for translations
-    ask_for = ms.last_text_read + 1
-    more_to_fetch = 1
-    while more_to_fetch:
-        try:
-            mapping = kom.ReqLocalToGlobal(conn, conf_no,
-                                           ask_for, 255).response()
-            for tuple in mapping.list:
-                if tuple[0] not in ms.read_texts:
-                    unread.append(tuple)
-                ask_for = mapping.range_end
-                more_to_fetch = mapping.later_texts_exists
-        except kom.NoSuchLocalText:
-            # No unread texts
-            more_to_fetch = 0
-
-    return unread
-
 # MAIN
 # Connect and log in
 
@@ -73,15 +41,29 @@ if conn is None:
 # CHECK FOR OPTIONS
 #
 
+conference = None
+
 options, arguments = getopt.getopt(param.get_arguments(),
                                    "",
-                                   [
-                                       ])
-for (opt, optarg) in options:
-    error("Option %s not handled (internal error)" % opt, exit_now = 1)
+                                   ["conference="])
 
-unread_texts = get_unread_texts(param.get_person_no(),
-                                param.get_person_no())
+for (opt, optarg) in options:
+    if opt == "--conference":
+        matches = conn.lookup_name(optarg, 1, 1)
+        if len(matches) == 0:
+            error("%s -- conference not found" % optarg)
+        elif len(matches) <> 1:
+            error("%s -- ambiguous recipient" % optarg)
+        else:
+            conference = matches[0][0]
+    else:
+        error("Option %s not handled (internal error)" % opt, exit_now = 1)
+
+if conference is None:
+    conference = param.get_person_no()
+    
+unread_texts = conn.get_unread_texts(param.get_person_no(),
+                                         conference)
 
 for (loc_no, global_no) in unread_texts:
     ts = conn.textstats[global_no]

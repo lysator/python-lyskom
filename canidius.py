@@ -79,7 +79,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.9 2004/12/08 09:59:46 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.10 2004/12/15 07:15:59 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -93,6 +93,7 @@ threaddict_m = mutex.mutex()
 
 log_m = mutex.mutex()
 
+addrre = re.compile("[^<]*<([^>]*)>")
 
 def log(s):
     lock(log_m)
@@ -128,9 +129,12 @@ class kommessage:
 
     def send(self,c):
         # Should be called with mutex acquired for c
-        
-        kom.ReqSendMessage(c, self.to, self.msg ).response()
 
+        try:
+            kom.ReqSendMessage(c, self.to, self.msg ).response()
+        except kom.MessageNotSent:
+            pass # What to do?
+            
 class komtext:
     def __init__(self,text,mi,ai,thread=''):
         self.text = text
@@ -203,8 +207,8 @@ def parse_configmessage(text, report=0, textno=0):
             treated = 0
 
             for q in ('server','userid','password','alias','resource',
-                      'port','skip_resources''ignore','ignore_presence',
-                      'sendpresence','startup_show','startup_status',
+                      'port','skip_resources','ignore','ignore_presence',
+                      'sendpresence','startup_show','startup_status', 'messages_only',
                       'divert_incoming_to','def_recpt_time'):
                 l = filter(None, p.split())
                 if l and l[0].lower() == q:
@@ -322,60 +326,35 @@ def check_active(person_no):
 class person:
     def __init__(self, person_no,conf):
         self.me = person_no
+        self.realme = person_no
         self.mutex = mutex.mutex()
         self.conf = conf
         
         if conf.has_key('divert_incoming_to'):
             self.me = int(conf['divert_incoming_to'])
 
-        try:
-            self.jabber = jabber.Client(conf['server'], int(conf['port']) )
-            self.jabber.connect()
-        except socket.error, e:
-            lock(komsendq_m)
-                
-            komsendq.put(kommessage(self.me, l1_e(
-                u"Anslutningen till Jabberservern misslyckades, gissningsvis pga nätverksfel. "
-                u"Felet var '%s' vid anslutning till %s:%s. " 
-                u"Det är rekommenderat att du ger kommandot 'disconnect' för att "
-                u"hamna i ett känt tillstånd."
-                % (e.args[1], str(conf['server']), str(conf['port']) ) )))
-            unlock(komsendq_m)
-            return
-        
-        self.jabber.registerHandler('message',self.got_message)
-        self.jabber.registerHandler('presence',self.got_presence)
-        self.jabber.registerHandler('iq',self.got_iq)
-
-        self.jabber.setDisconnectHandler(self.disconnected)
-
-        try:
-            self.jabber.auth( conf['userid'], conf['password'], conf['resource'])
-            self.jabber.sendPresence(status=conf['startup_status'], show=conf['startup_show'])
-        except AttributeError, e:
-            lock(komsendq_m)
-            komsendq.put(kommessage(self.me, l1_e(
-                u"Jabberanslutning misslyckades, gissningsvis pga nätverksfel. "
-                u"Det är rekommenderat att du ger kommandot 'disconnect' för att "
-                u"hamna i ett känt tillstånd. (Felinfo: %s)" % repr(e))))
-            unlock(komsendq_m)
-
-        self.lastdst = ''
-        self.lasttime = 0
-        self.mode = 'normal'
-        self.alive = 1
-
-        log( "%s/%s (person %d) logged in to %s:%s." % (conf['userid'], conf['resource'], person_no,
-                                                        conf['server'], conf['port']) )
-        # TODO: Send session-initiate stanza?
-        
-        #for p in self.conf['aliases']:
-        #    self.jabber.send( jabber.Presence
-        t=threading.Thread(target=self.jabberloop)
+        t=threading.Thread(target=self.jabbermain)
         t.setDaemon(1)
         t.start()
       
 
+    def reloadroster(self):
+        lock(self.mutex)
+
+        self.roster = self.jabber.requestRoster()
+        self.rosteraliascache = {}
+        self.rosterjidcache = {}
+
+        for p in self.roster.getJIDs():
+            c = str(self.roster.getName(p))
+            if c:
+                self.rosterjidcache[str(p).upper()] = c
+                self.rosteraliascache[c.upper()] = str(p)
+                
+        unlock(self.mutex)
+
+
+        
     def sender_adress(self):
         res=u""
         if self.conf['resource']:
@@ -407,11 +386,13 @@ class person:
         lock(self.mutex)
         c = self.conf
         dst = self.me
+        debuginfo = ''
         unlock(self.mutex)
         
         lock(komsendq_m)
         komsendq.put( kommessage( dst, l1_e(
-            u"Aktuell konfiguration som används: %s." % repr(c))))
+            u"Aktuell konfiguration som används: %s Debuginformation: %s." %
+            (repr(c), debuginfo))))
         unlock(komsendq_m)
 
 
@@ -572,10 +553,13 @@ class person:
 
         for p in check_in:
             if p[0:1] == '/' and p[-1:] == '/': # Regexp
-                if re.match(p[1:-1],str(s)):
-                    return 1
-                if re.match(p[1:-1],str(s.getStripped())):
-                    return 1
+                try:
+                    if re.match(p[1:-1],str(s)):
+                        return 1
+                    if re.match(p[1:-1],str(s.getStripped())):
+                        return 1
+                except:
+                    pass
             else:
                 if str(s).lower() ==  p.lower() or \
                    str(s.getStripped()).lower() == p.lower():
@@ -586,15 +570,21 @@ class person:
 
 
     def alias_to_uid(self,s):
-        for p in self.conf['aliases']:
-            if p[0].upper() == s.upper():
-                return p[1]
+        if s.upper() in self.rosteraliascache.keys():
+            return self.rosteraliascache[s.upper()]
+
+        if s.upper() in self.aliascache.keys():
+            return self.aliascache[s.upper()]
+        
         return s
     
     def uid_to_alias(self,s):
-        for p in self.conf['aliases']:
-            if p[1].upper() == s.upper():
-                return p[0]
+        if s.upper() in self.rosterjidcache.keys():
+            return self.rosterjidcache[s.upper()]
+
+        if s.upper() in self.jidcache.keys():
+            return self.jidcache[s.upper()]
+
         return s
 
 
@@ -605,8 +595,9 @@ class person:
             if s.getResource():
                 return self.uid_to_alias(s.getStripped())+"/"+s.getResource()
             return self.uid_to_alias(s.getStripped())
-        except AttributeError:
-            stripped = s
+        except AttributeError,e:
+            traceback.print_exception(e)
+            stripped = str(s)
             su = stripped
             res = u""
 
@@ -617,7 +608,7 @@ class person:
             if self.conf['skip_resources']:
                 return self.uid_to_alias(stripped)
 
-            return uid_to_alias(stripped)+res
+            return self.uid_to_alias(stripped)+res
     
     def disconnected(self,j):
         lock(komsendq_m)
@@ -650,8 +641,14 @@ class person:
                (not m.getThread() and not m.getSubject()) and \
                m.getType() != 'error' or m.getType() == 'groupchat':                   
                 sendmsg = 1
-                msg = u"%s: %s" % (
+                subj = u""
+
+                if m.getSubject():
+                    subj = u" (ang: %s)" % m.getSubject()
+                    
+                msg = u"%s%s: %s" % (
                     utf8_d(self.msg_sender(m.getFrom())),
+                    subj,
                     utf8_d(m.getBody()))
 
             elif m.getType() == 'error':
@@ -691,8 +688,13 @@ class person:
                 ai.append(aient)
 
                 aient = kom.AuxItem(kom.AI_MX_FROM)
-                aient.data = u"%s" % m.getFrom().getStripped()
+                aient.data = m.getFrom().getStripped()
                 ai.append(aient)
+
+                if self.uid_to_alias( m.getFrom().getStripped() ) != str(m.getFrom().getStripped()):
+                    aient = kom.AuxItem(kom.AI_MX_AUTHOR)
+                    aient.data = u"%s" % (self.uid_to_alias( m.getFrom().getStripped()))
+                    ai.append(aient)
 
                 aient = kom.AuxItem(AI_CAN_FROM)
                 aient.data = u"%s" % m.getFrom()
@@ -742,25 +744,17 @@ class person:
                 showtext = showd[m.getShow()]
 
 
-            res = u"(%s) " % m.getFrom().getResource()
-
-            if self.conf['skip_resources']:
-                res = u""
-
             if m.getType()=='unavailable':
-                msg = u"%s %sär utloggad%s%s." % (self.msg_sender(m.getFrom()),
-                                                 res,
+                msg = u"%s är utloggad%s%s." % (self.msg_sender(m.getFrom()), 
                                                  showtext,
                                                  stattext)
             elif not m.getType():
-                msg = u"%s %sär inloggad%s%s." % (self.msg_sender(m.getFrom()),
-                                                  res,
+                msg = u"%s är inloggad%s%s." % (self.msg_sender(m.getFrom()),
                                                   showtext,
                                                   stattext)                
             else:
-                msg = u"%s %shar konstig typ (%s) eller status (%s) (rått: %s)" % (
+                msg = u"%s har konstig typ (%s) eller status (%s) (rått: %s)" % (
                     m.getFrom().getStripped(),
-                    res,
                     m.getType(),
                     m.getStatus(),
                     repr(m))
@@ -781,7 +775,77 @@ class person:
         unlock(komsendq_m)
 
 
-    def jabberloop(self):
+    def jabbermain(self):
+        lock(self.mutex)
+
+        try:
+            self.jabber = jabber.Client(self.conf['server'], int(self.conf['port']) )
+            self.jabber.connect()
+        except socket.error, e:
+            lock(komsendq_m)
+                
+            komsendq.put(kommessage(self.me, l1_e(
+                u"Anslutningen till Jabberservern misslyckades, gissningsvis pga nätverksfel. "
+                u"Felet var '%s' vid anslutning till %s:%s. " 
+                u"Det är rekommenderat att du ger kommandot 'disconnect' för att "
+                u"hamna i ett känt tillstånd."
+                % (e.args[1], str(self.conf['server']), str(self.conf['port']) ) )))
+            unlock(komsendq_m)
+            return
+        
+        self.jabber.registerHandler('message',self.got_message)
+        self.jabber.registerHandler('presence',self.got_presence)
+        self.jabber.registerHandler('iq',self.got_iq)
+
+        self.jabber.setDisconnectHandler(self.disconnected)
+
+        try:
+            self.jabber.auth( self.conf['userid'],
+                              self.conf['password'],
+                              self.conf['resource'])
+            self.jabber.sendPresence( status = self.conf['startup_status'],
+                                      show = self.conf['startup_show'])
+        except AttributeError, e:
+            lock(komsendq_m)
+            komsendq.put(kommessage(self.me, l1_e(
+                u"Jabberanslutning misslyckades, gissningsvis pga nätverksfel. "
+                u"Det är rekommenderat att du ger kommandot 'disconnect' för att "
+                u"hamna i ett känt tillstånd. (Felinfo: %s)" % repr(e))))
+            unlock(komsendq_m)
+
+
+        self.lastdst = ''
+        self.lasttime = 0
+        self.mode = 'normal'
+
+        self.rosteraliascache = {}
+        self.rosterjidcache = {}
+
+        self.aliascache = {}
+        self.jidcache = {}
+
+        for (jid,name) in self.conf['aliases']:
+            self.aliascache[jid.upper()] = name
+            self.jidcache[name.upper()] = jid
+
+        self.alive = 1
+        person_no = self.realme
+        
+        unlock(self.mutex)
+
+        self.reloadroster()
+
+        log( "%s/%s (person %d) logged in to %s:%s." % (self.conf['userid'],
+                                                        self.conf['resource'],
+                                                        person_no,
+                                                        self.conf['server'],
+                                                        self.conf['port']) )
+        # TODO: Send session-initiate stanza?
+        
+        #for p in self.conf['aliases']:
+        #    self.jabber.send( jabber.Presence
+
+
         while self.alive:
             lock(self.mutex)
             self.jabber.process(0)
@@ -1013,7 +1077,11 @@ def async_new_text( m, conn ):
                     pass
             
         if not to: # Don't know who to send to?
-            return 
+            return
+
+        dst = to
+        if addrre.match(to):
+            dst = addrre.match(to).groups()[0]
 
         text = kom.ReqGetText(conn,
                               tno,
@@ -1034,7 +1102,7 @@ def async_new_text( m, conn ):
             text = l1_d( msg.message.strip() )
 
         tl = text.split("\n")        
-        pers.send_message(to,"\n".join(tl[1:]),type='',subject=tl[0],thread=thread)
+        pers.send_message(dst,"\n".join(tl[1:]),type='',subject=tl[0],thread=thread)
 
         ai1 = kom.AuxItem(kom.AI_MX_TO)
         ai1.data = to
@@ -1042,8 +1110,11 @@ def async_new_text( m, conn ):
         ai2 = kom.AuxItem(kom.AI_MX_FROM)
         ai2.data = pers.whoami()
 
+        ai3 = kom.AuxItem(AI_CAN_TO)
+        ai3.data = dst
+
         try:
-            kom.ReqModifyTextInfo(conn, tno, [], [ai1,ai2]).response()
+            kom.ReqModifyTextInfo(conn, tno, [], [ai1,ai2,ai3]).response()
         except:
             pass
 

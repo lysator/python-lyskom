@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.13"
+VERSION="0.3.14"
 
 INVISIBLE = 0
 
@@ -275,7 +275,7 @@ class Gazonk:
         if len(wholist) == 0:
             return who_string + "Inga personer har gissat.\n"
 
-        wtmp = [(-len(n), kom.ReqGetUconfStat(conn, s).response().name) for (n,s) in wholist]
+        wtmp = [(-len(n), get_komname(s)) for (n,s) in wholist]
         wtmp.sort()
         wholist = [(-n,s) for n,s in wtmp]
 
@@ -318,7 +318,7 @@ class Gazonk:
             if self.current_clue == 0:
                 new = 1
 
-        gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+        gaz_name = get_komname(self.person_no)
         mess_subject = "%s gazonkar" % shorten_name(gaz_name)
         mess_text = self.create_clue_string(0)
         mess_text += "------------\n" + self.create_next_clues_string()
@@ -335,7 +335,7 @@ class Gazonk:
         send_message(send_string, recipient)
 
     def send_letter(self, subject, message, recipient, new, person, extra_comments_to = []):
-        recipient_name = kom.ReqGetUconfStat(conn, recipient).response().name
+        recipient_name = get_komname(recipient)
         log("%s: Brev till %s:" % (get_date_and_time(), recipient_name))
         log(indent(message, 2) + "\n")
 
@@ -405,8 +405,8 @@ class Gazonk:
 
             # Har vi skickat tillräckligt med varningar nu?
             if self.warnings_sent > GAZ_MAX_WARNINGS:
-                my_name = kom.ReqGetUconfStat(conn, KOMPERSON).response().name
-                gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                my_name = get_komname(KOMPERSON)
+                gaz_name = get_komname(self.person_no)
                 self.send_letter("Du är inte längre gazonk!",
                                  "Du har inte lyssnat på varningarna och blir därmed \n" + \
                                  "fråntagen din gazonktitel!",
@@ -442,7 +442,7 @@ class Gazonk:
         if msg.recipient != KOMPERSON:
             return
 
-        sender_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
+        sender_name = get_komname(msg.sender)
         log("%s: Meddelande (%d) från %s:" % (get_date_and_time(), msg.recipient, sender_name))
         log(indent(msg.message, 2) + "\n")
 
@@ -630,8 +630,8 @@ class Gazonk:
             m = Gazonk.re_avsag_gazonk.search(msg.message)
             if m:
                 if self.current_clue == -1:
-                    my_name = kom.ReqGetUconfStat(conn, KOMPERSON).response().name
-                    gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                    my_name = get_komname(KOMPERSON)
+                    gaz_name = get_komname(self.person_no)
                     subject = "%s har avsagt sig gazonk!" % shorten_name(gaz_name)
                     message = "Vem som helst kan nu bli gazonk. Skicka bara 'ny gazonk'" + \
                               "\ni ett meddelande till <Person %d: %s>" % (KOMPERSON, my_name)
@@ -670,7 +670,7 @@ class Gazonk:
                                  msg.sender)
                     # Sänd ett brev om en gazonk-omgång pågår.
                     if self.current_clue > -1:
-                        gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                        gaz_name = get_komname(self.person_no)
                         subject = "%s gazonkar" % shorten_name(gaz_name)
                         message = "Tidsintervallet mellan ledtrådar har ändrats och \när nu %s\n\n" % \
                                   ti_format
@@ -687,7 +687,7 @@ class Gazonk:
         m = Gazonk.re_vem.search(msg.message)
         if m:
             if self.person_no > 0:
-                gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                gaz_name = get_komname(self.person_no)
                 send_message("<Person %d: %s> är gazonk!" % (self.person_no, gaz_name), \
                              msg.sender)
             else:
@@ -823,8 +823,8 @@ class Gazonk:
                 self.password_history[0:0] = [self.password]
                 self.password_history = self.password_history[0:50]
                 send_message("Grattis, Du gissade rätt!\nDu är nu ny gazonk!", msg.sender)
-                gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
-                new_gaz_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
+                gaz_name = get_komname(self.person_no)
+                new_gaz_name = get_komname(msg.sender)
                 mess_subject = "%s gazonkar" % shorten_name(gaz_name)
                 mess_text = "<Person %d: %s> klarade lösenordet och är ny gazonk!" % \
                             (msg.sender, new_gaz_name)
@@ -1117,7 +1117,7 @@ class Stats:
 
         for (person, s, psc) in stat_tuples:
             row = ""
-            pname = kom.ReqGetUconfStat(conn, person).response().name
+            pname = get_komname(person)
             for ss in showed_stats:
                 val = getattr(s,ss)
                 if val == None:
@@ -1391,7 +1391,7 @@ def indent(txt, spaces):
 
 # Skicka ett meddelande
 def send_message(message, recipient):
-    recipient_name = kom.ReqGetUconfStat(conn, recipient).response().name
+    recipient_name = get_komname(recipient)
     log("%s: Meddelande till %s:" % (get_date_and_time(), recipient_name))
     log(indent(message, 2) + "\n")
 
@@ -1445,6 +1445,7 @@ def format_hms(sec_amount, secs_method = 1):
 
 # Formattera en sträng av varje tid på ett fint sätt ("10:40 imorgon" t.ex.)
 def format_times(time_list, relative_to_time):
+    week_names = ["måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag", "söndag"]
     rtt = relative_to_time
     result = []
     for t in time_list:
@@ -1453,10 +1454,18 @@ def format_times(time_list, relative_to_time):
                                  string.zfill(str(tl.tm_min), 2))
         day_diff = t // 86400 - rtt // 86400
         if day_diff > 0:
-            if day_diff == 1:
-                time_string += " nästa dag"
+            day_diff_to_now = t // 86400 - time.time() // 86400
+            if day_diff_to_now == 1:
+                time_string += " i morgon"
+            elif day_diff_to_now == 2:
+                time_string += " i övermorgon"
+            elif day_diff_to_now < 7:
+                time_string += " på " + week_names[tl.tm_wday]
             else:
-                time_string += " %d dagar senare" % day_diff
+                if day_diff == 1:
+                    time_string += " dagen efter"
+                else:
+                    time_string += " %d dagar senare" % day_diff
         rtt = t
         result.append(time_string)
     return result
@@ -1563,6 +1572,14 @@ def negate_with_none(a):
     if a != None:
         return -a
     return None
+
+# Ta KOMnamn från nummer
+def get_komname(n):
+    try:
+        pname = kom.ReqGetUconfStat(conn, n).response().name
+    except:
+        pname = "Person %d (Okänd)" % n
+    return pname
 
 # Förkorta, dvs ta bort pareneteser ur namn
 def shorten_name(orig_name):

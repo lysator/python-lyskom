@@ -1,0 +1,186 @@
+#!/usr/bin/python
+# LysKOM Protocol A version 10 client interface for Python
+# $Id: komsend,v 1.1 1999/07/15 14:30:44 kent Exp $
+# (C) 1999 Kent Engström. Released under GPL.
+
+import kom
+import komparam
+import sys
+import getopt
+import string
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error/sucess reporting
+exit_code = 0
+def error(str):
+    global exit_code
+    exit_code = 1
+    sys.stderr.write("ERROR: " + str + "\n")
+
+def success(str):
+    sys.stderr.write("OK: " + str + "\n")
+
+def exit():
+    sys.exit(exit_code)
+
+# MAIN
+# Connect and log in
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, conn_error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], conn_error))
+    sys.exit(1)
+
+#
+# CHECK FOR OPTIONS
+#
+
+to_list = []
+cc_list = []
+bcc_list = []
+comment_to_list = []
+footnote_to_list = []
+hide_creating_software = 0
+aux_item_list = []
+Subject = ""
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   [
+                                       "to=",
+                                       "cc=",
+                                       "bcc=",
+                                       "subject=",
+                                       "comment=",
+                                       "footnote=",
+                                       "hide-creating-software",
+                                       "aux-item=",
+                                       ])
+for (opt, optarg) in options:
+    if opt == "--to":
+        to_list.append(optarg)
+    elif opt == "--cc":
+        cc_list.append(optarg)
+    elif opt == "--bcc":
+        bcc_list.append(optarg)
+    elif opt == "--subject":
+        subject = optarg
+    elif opt == "--comment":
+        comment_to_list.append(optarg)
+    elif opt == "--footnote":
+        footnote_to_list.append(optarg)
+    elif opt == "--hide-creating-software":
+        hide_creating_software = 1
+    elif opt == "--aux-item":
+        aux_item_list.append(optarg)
+    else:
+        error("Option %s not handled (internal error)" % opt)
+#
+# Create MiscInfo
+#
+
+misc_info = kom.CookedMiscInfo()
+
+# Recipients
+
+no_of_recipients = 0
+for (type, typename, list) in [(kom.MIR_TO,  "To", to_list),
+                               (kom.MIR_CC,  "CC", cc_list),
+                               (kom.MIR_BCC, "BCC", bcc_list)]:
+    for name in list:
+        matches = conn.lookup_name(name, 1, 1)
+        if len(matches) == 0:
+            error("%s: %s -- recipient not found" % (typename, name))
+        elif len(matches) <> 1:
+            error("%s: %s -- ambiguous recipient" % (typename, name))
+        else:
+            rec = kom.MIRecipient(type, matches[0][0])
+            misc_info.recipient_list.append(rec)
+            no_of_recipients = no_of_recipients + 1
+
+if no_of_recipients == 0:
+    error("No recipients")
+
+# Comment/footnote to
+for (type, typename, list) in \
+    [(kom.MIC_COMMENT, "Comment to", comment_to_list),
+     (kom.MIC_FOOTNOTE, "Footnote to", footnote_to_list)]:
+
+    for text_no_str in list:
+        try:
+            text_no = string.atoi(text_no_str)
+            try:
+                ts = conn.textstats[text_no]
+                mic = kom.MICommentTo(type, text_no)
+                misc_info.comment_to_list.append(mic)
+            except:
+                error("%s: %d -- text not found" % (typename, text_no))
+        except:
+            error("%s: %s -- bad text number" % (typename, text_no_str))
+
+#
+# CREATE AUX-ITEMS
+#
+
+aux_items = [] # FIXME!
+
+# creating-software [15] (text)
+if not hide_creating_software:
+    ai = kom.AuxItem(kom.AI_CREATING_SOFTWARE)
+    ai.data = "komsend %s" % revision
+    aux_items.append(ai)
+
+# User specified items
+# Syntax: "--aux-item=tag,flags,inherit_limit,data"
+# Flags: d: deleted, i: inherit, s: secret, h: hide creator, d: dont garb
+# Example: "--aux-item=15,,0,foobar 0.1"
+
+for str in aux_item_list:
+    try:
+        (tag, flags, inherit_limit, data) = string.split(str, ",")
+        ai = kom.AuxItem()
+        ai.tag = string.atoi(tag)
+        if "d" in flags:
+            ai.flags.deleted= 1
+        if "i" in flags:
+            ai.flags.inherit= 1
+        if "s" in flags:
+            ai.flags.secret= 1
+        if "h" in flags:
+            ai.flags.hide_creator= 1
+        if "d" in flags:
+            ai.flags.dont_garb= 1
+        ai.inherit_limit = string.atoi(inherit_limit)
+        ai.data = data
+        aux_items.append(ai)
+    except "1":
+        pass
+# 
+#
+# READ ARTICLE TEXT
+#
+
+text = sys.stdin.read()
+text = subject + "\n" + text
+    
+#
+# SEND ARTICLE
+#
+
+# Errors already?
+if exit_code <> 0:
+    exit()
+
+# Send!
+try:
+    text_no = kom.ReqCreateText(conn, text, misc_info, aux_items).response()
+    success("Text %d created" % text_no)
+except kom.Error:
+    error("Failed to create text (%s)" % sys.exc_info()[0:1])
+
+exit()
+

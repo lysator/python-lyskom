@@ -43,6 +43,6 @@ REMOVE_REDUNDANT_HTML = 1
 # and leave the article no in match group 1.
 # Set EXPORTER_ID_REGEXP to None to disable the special handling
 
-EXPORTER_ID_REGEXP = r"([0-9]+)\.\..*@kom.lysator.liu.se"
+EXPORTER_ID_REGEXP = r"<([0-9]+)\.\..*@kom.lysator.liu.se>"
 
 # -- CONFIGURATION ENDS HERE ---

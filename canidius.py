@@ -26,7 +26,7 @@
 #
 
 AGENT_PERSON = "Budbäraren"
-KOMSERVER = "kom.lysator.liu.se"
+KOMSERVER = "localhost"
 logfile = open("/tmp/canidiusstable.log", 'a')
 DEFAULT_PORT = '5222'
 DEFAULT_RESOURCE = 'LysKOM'
@@ -78,7 +78,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.7 2004/12/06 08:10:31 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.8 2004/12/07 06:42:41 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -193,7 +193,8 @@ def parse_configmessage(text, report=0):
             'ignore_presence':[],
             'sendpresence':[],
             'startup_show':'',
-            'startup_status':''}
+            'startup_status':'',
+            'def_recpt_time':'30'}
     
     for p in tl:
         if len(p) and p[0] != '#':
@@ -440,6 +441,10 @@ class person:
         currentmode = self.mode
         lastdst = self.lastdst
         lasttime = self.lasttime
+        try:
+            rept_timeout = int(self.conf['def_recpt_time'])
+        except ValueError:
+            recpt_timeout = 30
         unlock(self.mutex)
 
         if currentmode == 'normal':
@@ -450,7 +455,7 @@ class person:
                 if -1 == to.find("@") or -1 != to.find(" "): # No JID?
                     to = ''
                     
-            if (not lastdst or time.time()-lasttime>30) and not to:
+            if (not lastdst or time.time()-lasttime>recpt_timeout) and not to:
                 lock(komsendq_m)
                 komsendq.put( kommessage( sender, l1_e(
                     u"Du måste ange mottagare följt av kolon innan meddelandet.")))

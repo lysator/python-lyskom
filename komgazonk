@@ -21,9 +21,9 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.8"
+VERSION="0.3.9"
 
-INVISIBLE = 1
+INVISIBLE = 0
 
 MAX_ENTRIES_GUESS_LIST = -1
 
@@ -176,6 +176,23 @@ class Gazonk:
         self.per_clue_guesses = []
         self.current_guessers = {}
         self.current_time_interval = GAZONK_CLUE_TIME
+
+    def __str__(self):
+        return "<Stats.{'startup_time': %s, 'current_time': %s, 'password_history': %s" \
+               ", 'tstats': %s, 'current_guesses': %s, 'version': %s, 'is_night': %s" \
+               ", 'night_started': %s, 'person_no': %s, 'password': %s, 'clues': %s" \
+               ", 'time_last_action': %s, 'warnings_sent': %s, 'last_text_no': %s" \
+               ", 'per_clue_guesses': %s, 'current_guessers': %s" \
+               ", 'current_time_interval': %s}>" % \
+               (str(self.startup_time), str(self.current_time), str(self.password_history), \
+                str(self.tstats), str(self.current_guesses), str(self.version), \
+                str(self.is_night), str(self.night_started), str(self.person_no), \
+                str(self.password), str(self.clues), str(self.time_last_action), \
+                str(self.warnings_sent), str(self.last_text_no), str(self.per_clue_guesses), \
+                str(self.current_guessers), str(self.current_time_interval))
+
+    def __repr__(self):
+        return self.__str__()
 
     def set_last_action(self):
         self.time_last_action = time.time()
@@ -336,9 +353,13 @@ class Gazonk:
                 log("Old text number %d not found" % self.last_text_no)
 
         send_text = subject + "\n" + message
-        text_no = kom.ReqCreateText(conn, send_text, misc_info, []).response()
-        if person == 0:
-            self.last_text_no = text_no
+        text_no = None
+        try:
+            text_no = kom.ReqCreateText(conn, send_text, misc_info, []).response()
+            if person == 0:
+                self.last_text_no = text_no
+        except:
+            log("Misslyckades med att skicka brev")
         return text_no
 
     def check_monthly(self):
@@ -416,6 +437,8 @@ class Gazonk:
         sender_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
         log("%s: Meddelande (%d) från %s:" % (get_date_and_time(), msg.recipient, sender_name))
         log(indent(msg.message, 2) + "\n")
+
+        msg.message = string.strip(msg.message)
 
         # Svara ej på automatsvar.
         m = Gazonk.re_auto_reply.search(msg.message)
@@ -683,7 +706,8 @@ class Gazonk:
                                               self.current_time_interval, \
                                               GAZ_AMOUNT_CLUE_TIMES)
 
-                if nc_times[0] < current_time:
+                current_time = time.time()
+                if nc_times[0] < (current_time + 0.1:
                     if len(self.clues) > self.current_clue + 1:
                         send_message("Oj, är klockan så mycket! " + \
                                      "Bäst jag skickar ut en ny ledtråd.", msg.sender)
@@ -824,6 +848,15 @@ class TotStats:
         self.reset_now()
         self.monthly.reset()
 
+    def __str__(self):
+        return "<TotStats.{'total': %s, 'monthly': %s, 'cr': %s, 'disp_stat': %s" \
+               ", 'now': %s}>" % \
+               (str(self.total), str(self.monthly), str(self.cr), str(self.disp_stat), \
+                str(self.now))
+
+    def __repr__(self):
+        return self.__str__()
+
     def reset_now(self):
         self.disp_stat = GAZ_DISPLAY_STATISTICS
         self.now = get_now_num(self.disp_stat)
@@ -888,6 +921,16 @@ class Stats:
         self.clue_count = 0
         self.acoc = AverageCoC()
 
+    def __str__(self):
+        return "<Stats.{'guesses': %s, 'total': %s, 'people': %s, 'round_count': %s" \
+               ", 'given_clue_count': %s, 'clue_count': %s, 'acoc': %s}>" % \
+               (str(self.guesses), str(self.total), str(self.people), \
+                str(self.round_count), str(self.given_clue_count), \
+                str(self.clue_count), str(self.acoc))
+
+    def __repr__(self):
+        return self.__str__()
+
     def new_round(self):
         self.round_count += 1
 
@@ -916,10 +959,9 @@ class Stats:
         self.guesses.merge_into(other.guesses)
         self.acoc.merge_into(other.acoc)
 
-        plist = other.people.keys()
-        for person in plist:
+        for person in other.people.keys():
             if not self.people.has_key(person):
-                self.people[person] = other.people[person]
+                self.people[person] = copy.deepcopy(other.people[person])
             else:
                 self.people[person].merge_into(other.people[person])
 
@@ -1063,6 +1105,15 @@ class PersonStats:
         self.gpk_coc = AverageCoC()
         self.gpk_coc_mg = AverageCoC()
 
+    def __str__(self):
+        return "<PersonStats.{'guesses': %s, 'win_count': %s, 'm_coc': %s, 'm_coc_mg': %s" \
+               ", 'gpk_coc': %s, 'gpk_coc_mg': %s}>" % \
+               (str(self.guesses), str(self.win_count), str(self.m_coc), \
+                str(self.m_coc_mg), str(self.gpk_coc), str(self.gpk_coc_mg))
+
+    def __repr__(self):
+        return self.__str__()
+
     def merge_into(self, other):
         self.win_count += other.win_count
         self.guesses.merge_into(other.guesses)
@@ -1138,6 +1189,13 @@ class GuessDB:
         self.db = {}
         self.count = 0
 
+    def __str__(self):
+        return "<GuessDB.{'db': %s, 'count': %s}>" % \
+               (str(self.db), str(self.count))
+
+    def __repr__(self):
+        return self.__str__()
+
     def add(self, guess):
         self.count += 1
         if not self.db.has_key(guess):
@@ -1147,10 +1205,9 @@ class GuessDB:
 
     def merge_into(self, other):
         self.count += other.count
-        og_list = other.db.keys()
-        for guess in og_list:
+        for guess in other.db.keys():
             if not self.db.has_key(guess):
-                self.db[guess] = other.db[guess]
+                self.db[guess] = copy.deepcopy(other.db[guess])
             else:
                 self.db[guess] += other.db[guess]
 
@@ -1187,6 +1244,13 @@ class AverageCoC:
         self.total_clues = 0
         self.amount = 0
 
+    def __str__(self):
+        return "<AverageCoC.{'total_clues': %s, 'amount': %s}>" % \
+               (str(self.total_clues), str(self.amount))
+
+    def __repr__(self):
+        return self.__str__()
+
     def get(self):
         if self.amount == 0:
             return None
@@ -1212,6 +1276,16 @@ class StatTuple:
         self.ggpk = ggpk
         self.gpl = gpl
         self.ggpl = ggpl
+
+    def __str__(self):
+        return "<StatTuple.{'guesses': %s, 'win_count': %s, 'kpg': %s, 'kcube_pg': %s" \
+               ", 'led': %s, 'gled': %s, 'gpk': %s, 'ggpk': %s, 'gpl': %s, 'ggpl': %s}>" % \
+               (str(self.guesses), str(self.win_count), str(self.kpg), str(self.kcube_pg), \
+                str(self.led), str(self.gled), str(self.gpk), str(self.ggpk), \
+                str(self.gpl), str(self.ggpl))
+
+    def __repr__(self):
+        return self.__str__()
 
 # Loggning
 def log(txt):

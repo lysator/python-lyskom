@@ -184,7 +184,7 @@ class Gazonk:
                 night_hours = round(self.night_started/3600.0)*3600.0
                 gaz.time_last_action += ct - night_hours
                 self.night_started = -1
-            self.night = now_is_night
+            self.is_night = now_is_night
         self.current_time = time.time()
 
     def create_guess_list_string(self, max_nr = MAX_ENTRIES_GUESS_LIST):

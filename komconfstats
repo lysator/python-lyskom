@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.11 2001/03/05 22:39:46 kent Exp $
+# $Id: komconfstats,v 1.12 2001/06/11 20:32:19 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import whrandom
 import jddate # From the lyspython collection
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.11 $"
+vc_revision = "$Revision: 1.12 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -618,6 +618,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.prt.prop.what = "person"
         sub = self.prt.prop.add_sub(Tabulator)
         sub.what = "ärenderad"
+        sub.max_displayed = 50
         sub = sub.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10

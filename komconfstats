@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.1 2001/01/02 09:37:54 kent Exp $
+# $Id: komconfstats,v 1.2 2001/01/31 22:04:31 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import whrandom
 import jddate # From the lyspython collection
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.1 $"
+vc_revision = "$Revision: 1.2 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -323,10 +323,10 @@ class EvenNumberTabulator(Tabulator):
     
     def data_to_key(self, str):
         m = re_zero.match(str)
-        return len(m.group(1))
+        return -len(m.group(1))
 
     def key_to_display(self, x):
-        return "Jämna 1" + "0" * x + "-tal"
+        return "Jämna 1" + "0" * (-x) + "-tal"
 
 class WordTabulator(Tabulator):
     def report_extra_header(self, l):
@@ -440,6 +440,7 @@ class LogHistogram(Histogram):
         return "%6d -" % (self.logbase**x)
 
     def data_to_key(self, x):
+        if x == 0: x = 1
         return int(math.log(x)/self.logoflogbase)
 
 class SizeLogHistogram(LogHistogram):
@@ -928,7 +929,7 @@ class ConfStats:
                 continue
             else:
                 # Inside the requested period, fall through to do the work
-                # print "*", global_no, time.ctime(created)
+                print "*", global_no, time.ctime(created)
                 pass
 
             # Skip texts by myself
@@ -953,7 +954,7 @@ class ConfStats:
             # FIXME: This is base 10. Should we do base-2 also?
             
             numstr = str(global_no)
-            if numstr[-2:] == "00":
+            if numstr[-3:] == "000":
                 self.ent.tabulate([numstr, ts.author, numstr])
 
             # Palindromes
@@ -1005,8 +1006,11 @@ class ConfStats:
                 this_is_a_footnote = 0
                 this_is_a_self_comment= 0
                 for entry in ts.misc_info.comment_to_list:
-                    ts_commented = conn.textstats[entry.text_no]
-
+                    try:
+                        ts_commented = conn.textstats[entry.text_no]
+                    except kom.NoSuchText:
+                        continue
+                    
                     # Subject change?
                     if conn.subjects[entry.text_no] <> subject:
                         self.sat.tabulate([ts.author, subject])

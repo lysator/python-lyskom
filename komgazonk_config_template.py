@@ -56,7 +56,6 @@ GAZ_MAX_WARNINGS = 4
 # 0 - never
 # 1 - hourly
 # 2 - dayly
-# 3 - weekly
 # 4 - monthly
 # 5 - yearly
 GAZ_DISPLAY_STATISTICS = 4

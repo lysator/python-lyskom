@@ -1305,7 +1305,7 @@ def get_now_num(disp_stat):
     if disp_stat == 0:
         return -1
     tmptime = time.localtime(time.time())
-    tmpconv = {0: -1, 1: 3, 2: 2, 3: 6, 4: 1, 5: 0}
+    tmpconv = {0: -1, 1: 3, 2: 2, 4: 1, 5: 0}
     return tmptime[tmpconv[disp_stat]]
 
 # Dela upp en sträng på många rader.

@@ -1,0 +1,97 @@
+			    python-lyskom
+		      LysKOM support for Python
+
+
+EXECUTIVE SUMMARY
+
+  This is good stuff. Use it.
+
+
+HACKER SUMMARY
+
+  This distribution contains modules to enable Python programs to talk
+  to LysKOM servers, and applications using these modules. Highlights:
+
+  Basic LysKOM modules
+  --------------------
+
+- The kom.py module contains basic Protocol A support for clients.
+  It implements all non-obsolete requests in level 10 of the protocol.
+  The module is completely implemented in Python, which means that it's
+  convenient to use but rather slow. In addition to the most basic
+  Connection class, a CachedConnection class is provided. It offers
+  some basic caching and convenience methods.
+
+- The thkom.py module offers the ThreadedConnection class,
+  which is kom.Connection with support for Python threads.
+
+  Importing mail
+  --------------
+
+- Importing mail into LysKOM is the purpose of komimportmail.
+  It has support for MIME, threading and all the nice, new
+  aux-items.
+
+- rfc1522.py is a helper module that decodes MIME-encoded
+  mail header lines.
+
+- mimereader.py provides the Message class that ties together
+  Python's mimetools and multifile modules in order to 
+  simplify reading MIME mail.
+
+- lockingshelve.py is a helper module providing a shelve module
+  with locks around all operations.
+
+- lockfile.py is a helper module used to implement the locking
+  need by the above module.
+
+  Other program
+  -------------
+
+  Some are really useful (like komshow) while others should
+  be considered simple demo programs.
+
+- komshow dumps information about conferences, persons and texts,
+  including aux-items.
+
+- komsend posts a text to a LysKOM conference (or mailbox).
+  It can set arbitrary aux-items on the text.
+
+- kommsg sends a message to a LysKOM conference or person.
+
+- komgraph emits a VCG graph of a LysKOM article tree. You need
+  a VCG program like xvcg to view the result.
+
+- komunread displays a line to stdout for each unread letter you
+  have in your letterbox.
+
+- komwho shows a list of logged in persons.
+
+- komparam.py is a helper module used by the programs above to
+  learn server address, server port, person name/number and password
+  from environment variables and/or a "~/.komrc" file.
+
+
+COPYRIGHT
+
+  (C) Copyright 1999 Kent Engström, Peter Liljenberg.
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+
+CONTACT INFORMATION
+
+  Please send questions and bug reports to kent@lysator.liu.se
+

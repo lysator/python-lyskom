@@ -65,6 +65,7 @@ import os
 import mutex
 import threading
 import time
+import re
 import traceback
 import encodings
 import Queue
@@ -78,7 +79,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.8 2004/12/07 06:42:41 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.9 2004/12/08 09:59:46 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -184,7 +185,7 @@ def unlock(m):
     #    traceback.print_stack()
     m.unlock()
 
-def parse_configmessage(text, report=0):
+def parse_configmessage(text, report=0, textno=0):
     # Should probably be in person
     tl = text.split("\n")
     nounderstand = []
@@ -194,7 +195,8 @@ def parse_configmessage(text, report=0):
             'sendpresence':[],
             'startup_show':'',
             'startup_status':'',
-            'def_recpt_time':'30'}
+            'def_recpt_time':'30',
+            'config_source':textno}
     
     for p in tl:
         if len(p) and p[0] != '#':
@@ -203,15 +205,16 @@ def parse_configmessage(text, report=0):
             for q in ('server','userid','password','alias','resource',
                       'port','skip_resources''ignore','ignore_presence',
                       'sendpresence','startup_show','startup_status',
-                      'divert_incoming_to'):
+                      'divert_incoming_to','def_recpt_time'):
                 l = filter(None, p.split())
                 if l and l[0].lower() == q:
                     if q == 'alias':                        
                         conf['aliases'].append((l[1],l[2]))
                         treated = 1
                     elif q in ('ignore','ignore_presence','sendpresence'):
+                        treated = 1
                         for r in l[1:]:
-                            conf[q].append(r.lower())
+                            conf[q].append(r)
                     else:
                         conf[q] = l[1]
                         treated = 1
@@ -222,6 +225,8 @@ def parse_configmessage(text, report=0):
     if nounderstand and report:
         pass # TODO
 
+    conf['ignored_settings'] = nounderstand
+    
     sp = conf.keys()
 
     if 'server' in sp and 'userid' in sp and 'password' in sp:
@@ -256,16 +261,19 @@ def messages_satisfying(testfunc):
     while texts_to_search:
 
         search_now = min(255, texts_to_search)
-        
-        textmap = kom.ReqLocalToGlobal(conn,
-                                       daemon_person,
-                                       baselocal,
-                                       search_now).response()
 
+        try:
+            textmap = kom.ReqLocalToGlobal(conn,
+                                           daemon_person,
+                                           baselocal,
+                                           search_now).response()
+        except kom.ServerError:
+            textmap = []
+            
         for p in textmap.list:
             globtext = p[1]
 
-            if testfunc( conn.textstats[p[1]] ):
+            if globtext and testfunc( conn.textstats[globtext] ):
                 possible_texts.append(globtext)
                             
         texts_to_search = texts_to_search - search_now
@@ -290,12 +298,20 @@ def configmessage(person_no):
                                   textno,
                                   0, conn.textstats[textno].no_of_chars).response()
 
-            config = parse_configmessage(text)
+            for q in filter( lambda x: x.type == kom.MIC_FOOTNOTE,
+                             conn.textstats[textno].misc_info.comment_in_list ):
+                text = text +'\n' + kom.ReqGetText(conn,
+                                             q.text_no,
+                                             0,
+                                             conn.textstats[q.text_no].no_of_chars).response()
+                            
+
+            config = parse_configmessage(text,textno=textno)
 
             
             if config:
                 return person(person_no,config)
-    except kom.NoSuchText:
+    except kom.ServerError:
         return
 
 def check_active(person_no):
@@ -374,11 +390,29 @@ class person:
             pass
         
         lock(self.mutex)
+        personno = self.me
+        textno = self.conf['config_source']
         self.alive = 0
         self.jabber.setDisconnectHandler(ignore)
         self.jabber.disconnect()
         log( "%s/%s requested disconnect." % (self.conf['userid'], self.conf['resource']) )
         unlock(self.mutex)
+
+        if textno:
+            conn.textstats.invalidate(textno)
+        conn.conferences.invalidate(self.me)
+
+    def send_config(self):        
+        
+        lock(self.mutex)
+        c = self.conf
+        dst = self.me
+        unlock(self.mutex)
+        
+        lock(komsendq_m)
+        komsendq.put( kommessage( dst, l1_e(
+            u"Aktuell konfiguration som används: %s." % repr(c))))
+        unlock(komsendq_m)
 
 
 
@@ -442,11 +476,11 @@ class person:
         lastdst = self.lastdst
         lasttime = self.lasttime
         try:
-            rept_timeout = int(self.conf['def_recpt_time'])
+            recpt_timeout = int(self.conf['def_recpt_time'])
         except ValueError:
             recpt_timeout = 30
         unlock(self.mutex)
-
+            
         if currentmode == 'normal':
             if -1 == m.find(":"):
                 to =''
@@ -528,6 +562,27 @@ class person:
         log( "%s sent message to %s." % (msg.getFrom(), msg.getTo()) )
 
 
+    def is_ignored(self,s,type=''):
+        # Should be called with self.mutex acquired
+
+        check_in = self.conf['ignore']
+
+        if type == 'presence':
+            check_in = check_in + self.conf['ignore_presence']
+
+        for p in check_in:
+            if p[0:1] == '/' and p[-1:] == '/': # Regexp
+                if re.match(p[1:-1],str(s)):
+                    return 1
+                if re.match(p[1:-1],str(s.getStripped())):
+                    return 1
+            else:
+                if str(s).lower() ==  p.lower() or \
+                   str(s.getStripped()).lower() == p.lower():
+                    return 1
+            
+        return 0
+
 
 
     def alias_to_uid(self,s):
@@ -587,8 +642,7 @@ class person:
 
         log( "%s got message from %s." % (m.getTo(), m.getFrom()) )
 
-        if not str(m.getFrom()) in self.conf['ignore'] and \
-           not str(m.getFrom().getStripped()) in self.conf['ignore']:
+        if not self.is_ignored(m.getFrom()):
             sendmsg = 0
             sendletter = 0
                        
@@ -673,8 +727,7 @@ class person:
     def got_presence(self,j,m):
         log( "%s got presence from %s." % (m.getTo(), m.getFrom()) )
 
-        if not (str(m.getFrom().getStripped()) in self.conf['ignore'] or 
-                str(m.getFrom().getStripped()) in self.conf['ignore_presence']):
+        if not self.is_ignored(m.getFrom(), 'presence'):
 
             stattext = u""
             if m.getStatus():
@@ -782,6 +835,10 @@ def ping_handler( msg, conn, p, pers_no=0 ):
     kommessage(pers_no, l1_e( u"Pong")).send(conn)
     return 0
 
+def config_handler( msg, conn, p, pers_no=0 ):
+    p.send_config()
+    return 0
+
 def enter_handler( msg, conn, p, pers_no=0 ):
     l = msg.split()
 
@@ -829,6 +886,8 @@ msg_handlers={'xa':xa_handler,
               'lämna':leave_handler,
               'prata med':direct_handler,
               'direct':direct_handler,
+              'config':config_handler,
+              'konfiguration':config_handler,
               'status':status_handler
               }
 

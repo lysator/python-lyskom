@@ -983,6 +983,7 @@ if PID == 1:
     pidfile = open(PIDFILE, "w")
     pidfile.write(str(os.getpid()))
     pidfile.close()
+    os.chmod(PIDFILE, 0600)
 
 # Öppna en logfil, kan vara bra att ha :-)
 if LOG == 1:

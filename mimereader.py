@@ -1,5 +1,5 @@
 # Support for reading, decoding and decomposing MIME messages.
-# $Id: mimereader.py,v 1.2 1999/07/19 22:43:15 kent Exp $
+# $Id: mimereader.py,v 1.3 1999/07/23 13:01:34 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # This module is primarily designed for use with komimportmail,
@@ -13,6 +13,7 @@ import multifile
 import string
 import cStringIO
 import os
+import rfc1522
 
 # This class represents a mail message in MIME format or basic RFC 822
 # format. Attributes:
@@ -49,6 +50,7 @@ class Message:
     def linear_list_of_discrete_parts(self):
         return self.data.linear_list_of_discrete_parts()
 
+# Common attributes and methods for a MIME part (discrete or multipart)
 class Part:
     def __init__(self, headers, infile, maintype = None, subtype = None):
         self.headers = headers
@@ -62,6 +64,10 @@ class Part:
             self.subtype = subtype
         else:
             self.subtype = headers.getsubtype()
+
+    def __getitem__(self, key):
+        # Delegate to self.headers, but remove RFC1522 coding
+        return rfc1522.decode(self.headers[key])
             
 # Attributes of a discrete part
 # - maintype, subtype: MIME type

@@ -19,10 +19,9 @@ from komgazonk_config import *
 import cPickle
 import random
 import copy
-import pprint
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.0"
+VERSION="0.3.1"
 
 INVISIBLE = 1
 
@@ -490,6 +489,7 @@ class Gazonk:
                 return
 
             # Ställ om tidsintervallet.
+            ch_interval = 0
             m = Gazonk.re_tidsintervall.match(msg.message)
             if m:
                 amount = int(m.group(1))
@@ -502,16 +502,17 @@ class Gazonk:
                 amount = min(amount, GAZONK_CT_MAXIMUM)
                 amount = max(amount, GAZONK_CT_MINIMUM)
                 self.current_time_interval = amount
-                send_message("Tidsintervallet är nu %d sekunder mellan varje ledtråd" % amount, \
-                             msg.sender)
-                return
+                ch_interval = 1
 
             # Ställ tillbaka tidsintervallet.
             m = Gazonk.re_ater_tidsintervall.search(msg.message)
             if m:
                 self.current_time_interval = GAZONK_CLUE_TIME
-                send_message("Tidsintervallet är nu %d sekunder mellan varje ledtråd" % \
-                             self.current_time_interval, \
+                ch_interval = 1
+
+            if ch_interval:
+                send_message("Tidsintervallet är nu %s mellan varje ledtråd." % \
+                             format_hms(self.current_time_interval, 2), \
                              msg.sender)
                 return
 
@@ -559,8 +560,8 @@ class Gazonk:
             else:
                 next_clue_time = self.time_last_action + \
                                  self.current_time_interval - current_time
-                message = "Det är %d timmar och %d minuter kvar till nästa ledtråd" % \
-                          divmod(next_clue_time/60,60)
+                message = "Det är %s kvar till nästa ledtråd." % \
+                          format_hms(next_clue_time,1)
                 send_message(message, msg.sender)
                 return
 
@@ -1069,6 +1070,40 @@ def find_person(person_str):
         return None
     else:
         return matches[0]
+
+# Formattera en tidssträng på ett käckt sätt.
+def format_hms(sec_amount, secs_method = 1):
+    (mins, secs) = divmod(sec_amount,60)
+     hours = 0
+    if mins >= 60:
+        (hours, mins) = divmod(mins,60)
+
+    parts = []
+    if hours > 0:
+        hstring = "timme"
+        if hours > 1:
+            hstring = "timmar"
+        parts.append( "%d %s" % (hours, hstring) )
+
+    if mins > 0:
+        mstring = "minut"
+        if mins > 1:
+            mstring = "minuter"
+        parts.append( "%d %s" % (mins, mstring) )
+
+    if ((secs_method == 1 and sec_amount < 180) or secs_method == 2) and \
+       (secs > 0 or (hours == 0 and mins == 0 and secs == 0)):
+        sstring = "sekund"
+        if secs == 0 or secs > 1:
+            sstring = "sekunder"
+        parts.append( "%d %s" % (secs, sstring) )
+
+    if len(parts) == 3:
+        return "%s, %s och %s" % (parts[0], parts[1], parts[2])
+    elif len(parts) == 2:
+        return "%s och %s" % (parts[0], parts[1])
+
+    return "%s" % (parts[0])
 
 # Divide
 def divide_with_zero(a,b):

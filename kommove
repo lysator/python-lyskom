@@ -1,0 +1,159 @@
+#!/usr/bin/python
+# LysKOM Protocol A version 10 client interface for Python
+# $Id: kommove,v 1.1 1999/10/15 08:53:19 kent Exp $
+# (C) 1999 Kent Engström. Released under GPL.
+
+import kom
+import komparam
+import sys
+import getopt
+import string
+import komwalk
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error/sucess reporting
+exit_code = 0
+def error(str, code = 2, exit_now = 0):
+    global exit_code
+    exit_code = max(exit_code, code)
+    sys.stderr.write("ERROR: " + str + "\n")
+    if exit_now:
+        exit()
+        
+def success(str):
+    sys.stderr.write("OK: " + str + "\n")
+
+def exit():
+    sys.exit(exit_code)
+
+# Return true iff the lists share at least one common element
+def common_element_exists(l1, l2):
+    for e1 in l1:
+        if e1 in l2:
+            return 1
+    return 0
+
+# Recipient types
+recipient_type_dict = {
+    kom.MIR_TO: "To",
+    kom.MIR_CC: "CC",
+    kom.MIR_BCC: "BCC"
+    }
+
+# OUR NEW WALKER
+
+class Mover(komwalk.Walker):
+    def __init__(self, connection, root_text_no, from_conf_list, to_conf):
+        komwalk.Walker.__init__(self, connection, root_text_no)
+        self.from_conf_list = from_conf_list
+        self.to_conf = to_conf
+
+    # Handle a text node
+    def visit_node(self, text_no, text_stat):
+        # Present some nice information first
+        print "Text %d by %s" % (text_no, self.c.conf_name(text_stat.author))
+
+        # Gather information on recipients
+        recipients_to_delete = []
+        already_in_destination = 0
+
+        for mi in text_stat.misc_info.recipient_list:
+            print "o %s: %s "  % \
+                  (recipient_type_dict[mi.type],
+                   self.c.conf_name(mi.recpt))
+            if mi.recpt <> self.to_conf:
+                recipients_to_delete.append(mi.recpt)
+            if mi.recpt == self.to_conf:
+                already_in_destination = 1
+
+        # Handle addition
+        addition_went_wrong = 0
+        if not already_in_destination:
+            try:
+                kom.ReqAddRecipient(self.c, text_no, self.to_conf).response()
+                print "+ Add: %s" % self.c.conf_name(self.to_conf)
+            except kom.ServerError():
+                print "+ ADD: %s (BAD)" % self.c.conf_name(self.to_conf)
+                addition_went_wrong = 1
+                    
+        # Handle subtraction
+        if not addition_went_wrong:
+            for recipient in recipients_to_delete:
+                try:
+                    kom.ReqSubRecipient(self.c, text_no, recipient).response()
+                    print "- Sub: %s" % self.c.conf_name(recipient)
+                except kom.ServerError():
+                    print "- SUB: %s (BAD)" % self.c.conf_name(recipient)
+                    addition_went_wrong = 1
+
+        # Add this text to the 
+        return 1
+
+    def visit_edge(self, text_no, text_stat, comment):
+        return 1
+
+# MAIN
+# Connect and log in
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, conn_error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], conn_error))
+    sys.exit(1)
+
+#
+# CHECK FOR OPTIONS
+#
+
+root = None
+from_conf_list = []
+to_conf = None
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   [
+                                       "root=",
+                                       "from=",
+                                       "to=",
+                                       ])
+for (opt, optarg) in options:
+    if opt == "--root":
+        try:
+            root = string.atoi(optarg)
+        except:
+            error("%s is not a good text number" % optarg, exit_now = 1)
+    elif opt == "--from":
+        confs = conn.lookup_name(optarg, want_pers = 1, want_confs = 1)
+        if len(confs) == 1:
+            from_conf_list.append(confs[0][0])
+        elif len(confs) > 1:
+            error("%s is not a unique name" % optarg, exit_now = 1)
+        else:
+            error("%s not found" % optarg, exit_now = 1)
+    elif opt == "--to":
+        confs = conn.lookup_name(optarg, want_pers = 1, want_confs = 1)
+        if len(confs) == 1:
+            to_conf = (confs[0][0])
+        elif len(confs) > 1:
+            error("%s is not a unique name" % optarg, exit_now = 1)
+        else:
+            error("%s not found" % optarg, exit_now = 1)
+    else:
+        error("Option %s not handled (internal error)" % opt, exit_now = 1)
+
+# Check for required arguments
+if root is None:
+    error("You must specify the root (--root)", exit_now = 1)
+
+if to_conf is None:
+    error("You must specify destination (--to)", exit_now = 1)
+
+# Choose function
+
+mover = Mover(conn, root, from_conf_list, to_conf)
+mover.walk()
+
+exit()

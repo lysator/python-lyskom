@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.8 1999/07/15 14:37:52 kent Exp $
+# $Id: kom.py,v 1.9 1999/07/16 16:50:14 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -344,7 +344,13 @@ class ReqGetText(Request):
 # get-text-stat-old [26] (1) Obsolete (10) Use get-text-stat (90)
 
 # mark-as-read [27] (1) Recommended
-# FIXME!
+class ReqMarkAsRead(Request):
+    def __init__(self, c, conf_no, texts):
+        self.register(c)
+        c.send_string("%d 27 %d %s\n" %
+                      (self.id,
+                       conf_no,
+                       c.array_of_int_to_string(texts)))
 
 # create-text-old [28] (1) Obsolete (10) Use create-text (86)
 
@@ -508,7 +514,14 @@ class ReqSetUserArea(Request):
         c.send_string("%d 57 %d %d\n" % (self.id, person_no, user_area))
 
 # get-last-text [58] (3) Recommended
-# FIXME!
+class ReqGetLastText(Request):
+    def __init__(self, c, before):
+        self.register(c)
+        c.send_string("%d 58 %s\n" % (self.id, before.to_string()))
+        
+    def parse_response(self):
+        # --> Text-No
+        return self.c.parse_int()
 
 # create-anonymous-text-old [59] (3) Obsolete (10)
 #                                    Use create-anonymous-text (87)
@@ -640,7 +653,10 @@ class ReqGetUconfStat(Request):
         return self.c.parse_object(UConference)
 
 # set-info [79] (9) Recommended
-# FIXME!
+class ReqSetInfo(Request):
+    def __init__(self, c, info):
+        self.register(c)
+        c.send_string("%d 79 %s\n" % (self.id, info.to_string()))
 
 # accept-async [80] (9) Recommended
 class ReqAcceptAsync(Request):
@@ -731,10 +747,11 @@ class ReqCreateAnonymousText(Request):
 class ReqCreateConf(Request):
     def __init__(self, c, name, type, aux_items = []):
         self.register(c)
-        # FIXME: Ignoring aux-items for a while
-        c.send_string("%d 88 %dH%s %s 0 { }\n" %
-                      (self.id, len(name), name,
-                       type.to_string()))
+        c.send_string("%d 88 %dH%s %s %s\n" %
+                      (self.id,
+                       len(name), name,
+                       type.to_string(),
+                       c.array_to_string(aux_items)))
         
     def parse_response(self):
         # --> Conf-No
@@ -744,12 +761,12 @@ class ReqCreateConf(Request):
 class ReqCreatePerson(Request):
     def __init__(self, c, name, passwd, flags, aux_items = []):
         self.register(c)
-        # FIXME: Ignoring aux-items for a while
-        c.send_string("%d 89 %dH%s %dH%s %s 0 { }\n" %
+        c.send_string("%d 89 %dH%s %dH%s %s %s\n" %
                       (self.id,
                        len(name), name,
                        len(passwd), passwd,
-                       flags.to_string()))
+                       flags.to_string(),
+                       c.array_to_string(aux_items)))
         
     def parse_response(self):
         # --> Pers-No
@@ -777,9 +794,24 @@ class ReqGetConfStat(Request):
         return self.c.parse_object(Conference)
 
 # modify-text-info [92] (10) Recommended
-# FIXME!
+class ReqModifyTextInfo(Request):
+    def __init__(self, c, text_no, delete, add):
+        self.register(c)
+        c.send_string("%d 92 %d %s %s\n" %
+                      (self.id,
+                       text_no,
+                       c.array_of_int_to_string(delete),
+                       c.array_to_string(add)))
+
 # modify-conf-info [93] (10) Recommended
-# FIXME!
+class ReqModifyConfInfo(Request):
+    def __init__(self, c, conf_no, delete, add):
+        self.register(c)
+        c.send_string("%d 93 %d %s %s\n" %
+                      (self.id,
+                       conf_no,
+                       c.array_of_int_to_string(delete),
+                       c.array_to_string(add)))
 
 # get-info [94] (10) Recommended
 class ReqGetInfo(Request):
@@ -792,7 +824,13 @@ class ReqGetInfo(Request):
         return self.c.parse_object(Info)
 
 # modify-system-info [95] (10) Recommended
-# FIXME!
+class ReqModifySystemInfo(Request):
+    def __init__(self, c, delete, add):
+        self.register(c)
+        c.send_string("%d 95 %s %s\n" %
+                      (self.id,
+                       c.array_of_int_to_string(delete),
+                       c.array_to_string(add)))
 
 # query-predefined-aux-items [96] (10) Recommended
 class ReqQueryPredefinedAuxItems(Request):
@@ -1033,16 +1071,15 @@ async_dict = {
 
 class Time:
     def __init__(self):
-        # FIXME: Do we ever send these to the server?
-        self.seconds = None
-        self.minutes = None
-        self.hours = None
-        self.day = None
-        self.month = None
-        self.year = None
-        self.day_of_week = None
-        self.day_of_year = None
-        self.is_dst = None
+        self.seconds = 0
+        self.minutes = 0
+        self.hours = 0
+        self.day = 0
+        self.month = 0
+        self.year = 0
+        self.day_of_week = 0
+        self.day_of_year = 0
+        self.is_dst = 0
 
     def parse(self, c):
         self.seconds = c.parse_int()
@@ -1054,6 +1091,18 @@ class Time:
         self.day_of_week = c.parse_int()
         self.day_of_year = c.parse_int()
         self.is_dst = c.parse_int()
+
+    def to_string(self):
+        return "%d %d %d %d %d %d %d %d %d" % (
+            self.seconds,
+            self.minutes,
+            self.hours,
+            self.day,
+            self.month,
+            self.year,
+            self.day_of_week, # ignored by server
+            self.day_of_year, # ignored by server
+            self.is_dst)
 
     def __repr__(self):
         return "<Time %04d-%02d-%02d %02d:%02d:%02d>" % \
@@ -1218,14 +1267,14 @@ class AuxItemFlags:
 # This class works as Aux-Item on reception, and
 # Aux-Item-Input when being sent.
 class AuxItem: 
-    def __init__(self, tag = None):
+    def __init__(self, tag = None, data = ""):
         self.aux_no = None # not part of Aux-Item-Input
         self.tag = tag
         self.creator = None # not part of Aux-Item-Input
         self.created_at = None # not part of Aux-Item-Input
         self.flags = AuxItemFlags()
         self.inherit_limit = 0
-        self.data = ""
+        self.data = data
 
     def parse(self, c):
         self.aux_no = c.parse_int()
@@ -1252,7 +1301,7 @@ class TextStat:
         self.no_of_lines = None
         self.no_of_chars = None
         self.no_of_marks = None
-        self.misc_info = [] # FIXME: Better representation!
+        self.misc_info = []
         self.aux_items = []
 
     def parse(self, c, old_format = 0):
@@ -1553,6 +1602,8 @@ class Mark:
 
 # SERVER INFORMATION
 
+# This class works as Info on reception, and
+# Info-Old when being sent.
 class Info:
     def __init__(self):
         self.version = None
@@ -1561,7 +1612,7 @@ class Info:
         self.motd_conf = None
         self.kom_news_conf = None
         self.motd_of_lyskom = None
-        self.aux_item_list = []
+        self.aux_item_list = [] # not part of Info-Old
 
     def parse(self, c):
         self.version = c.parse_int()
@@ -1571,6 +1622,15 @@ class Info:
         self.kom_news_conf = c.parse_int()
         self.motd_of_lyskom = c.parse_int()
         self.aux_item_list = c.parse_array(AuxItem)
+
+    def to_string(self):
+        return "%d %d %d %d %d %d" % (
+            self.version,
+            self.conf_pres_conf,
+            self.pers_pres_conf,
+            self.motd_conf,
+            self.kom_news_conf,
+            self.motd_of_lyskom)
 
 class VersionInfo:
     def parse(self, c):

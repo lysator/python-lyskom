@@ -1,6 +1,6 @@
 # Tabulator and Histogram classes refactored out from the
 # python-lyskom program komconfstats.
-# $Id: tabulator.py,v 1.1 2002/01/21 22:47:33 kent Exp $
+# $Id: tabulator.py,v 1.2 2002/01/21 23:11:00 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 
@@ -92,7 +92,7 @@ class Tabulator(Entry):
         # This method is common for both normal tabulators and histograms
 
         # No report if we are past the max level
-        if indent >= levels: return []
+        if levels is not None and indent >= levels: return []
         
         l = [] # Collect lines of text using this one
 

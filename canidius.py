@@ -25,9 +25,9 @@
 # Python 2.3 probably required
 #
 
-AGENT_PERSON = "Pontus Testperson"
+AGENT_PERSON = "Budbäraren"
 KOMSERVER = "kom.lysator.liu.se"
-logfile = open("/tmp/canidius.log", 'a')
+logfile = open("/tmp/canidiusstable.log", 'a')
 DEFAULT_PORT = '5222'
 DEFAULT_RESOURCE = 'LysKOM'
 
@@ -78,7 +78,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.6 2004/12/05 11:14:16 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.7 2004/12/06 08:10:31 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -97,6 +97,7 @@ def log(s):
     lock(log_m)
     if logfile:
         logfile.write("%s %s\n" % (time.ctime(),s))
+        logfile.flush()
     unlock(log_m)
 
 def utf8_d(s):
@@ -202,15 +203,14 @@ def parse_configmessage(text, report=0):
                       'port','skip_resources''ignore','ignore_presence',
                       'sendpresence','startup_show','startup_status',
                       'divert_incoming_to'):
-                l = filter(None, p.lower().split())
-                if l and l[0] == q:
-                    if q == 'alias':
-                        origcasel = filter(None, p.split())
-                        conf['aliases'].append((origcasel[1],origcasel[2]))
+                l = filter(None, p.split())
+                if l and l[0].lower() == q:
+                    if q == 'alias':                        
+                        conf['aliases'].append((l[1],l[2]))
                         treated = 1
                     elif q in ('ignore','ignore_presence','sendpresence'):
                         for r in l[1:]:
-                            conf[q].append(r)
+                            conf[q].append(r.lower())
                     else:
                         conf[q] = l[1]
                         treated = 1
@@ -325,16 +325,27 @@ class person:
                 % (e.args[1], str(conf['server']), str(conf['port']) ) )))
             unlock(komsendq_m)
             return
-            
+        
         self.jabber.registerHandler('message',self.got_message)
         self.jabber.registerHandler('presence',self.got_presence)
         self.jabber.registerHandler('iq',self.got_iq)
 
         self.jabber.setDisconnectHandler(self.disconnected)
-        self.jabber.auth( conf['userid'], conf['password'], conf['resource'])
-        self.jabber.sendPresence(status=conf['startup_status'], show=conf['startup_show'])
 
-        self.mode = 'chat'
+        try:
+            self.jabber.auth( conf['userid'], conf['password'], conf['resource'])
+            self.jabber.sendPresence(status=conf['startup_status'], show=conf['startup_show'])
+        except AttributeError, e:
+            lock(komsendq_m)
+            komsendq.put(kommessage(self.me, l1_e(
+                u"Jabberanslutning misslyckades, gissningsvis pga nätverksfel. "
+                u"Det är rekommenderat att du ger kommandot 'disconnect' för att "
+                u"hamna i ett känt tillstånd. (Felinfo: %s)" % repr(e))))
+            unlock(komsendq_m)
+
+        self.lastdst = ''
+        self.lasttime = 0
+        self.mode = 'normal'
         self.alive = 1
 
         log( "%s/%s (person %d) logged in to %s:%s." % (conf['userid'], conf['resource'], person_no,
@@ -403,7 +414,7 @@ class person:
 
     def directto(self,uid):
         lock(self.mutex)
-        self.mode = 'singlechat'
+        self.mode = 'chat'
         self.dst = uid
         unlock(self.mutex)
 
@@ -419,7 +430,7 @@ class person:
         
     def leave(self):
         lock(self.mutex)
-        self.mode = 'chat'
+        self.mode = 'normal'
         unlock(self.mutex)
 
 
@@ -427,28 +438,45 @@ class person:
         
         lock(self.mutex)
         currentmode = self.mode
+        lastdst = self.lastdst
+        lasttime = self.lasttime
         unlock(self.mutex)
 
-        if currentmode == 'chat':
+        if currentmode == 'normal':
             if -1 == m.find(":"):
+                to =''
+            else:
+                to = self.alias_to_uid( m[:m.find(":")].strip() )
+                if -1 == to.find("@") or -1 != to.find(" "): # No JID?
+                    to = ''
+                    
+            if (not lastdst or time.time()-lasttime>30) and not to:
                 lock(komsendq_m)
                 komsendq.put( kommessage( sender, l1_e(
                     u"Du måste ange mottagare följt av kolon innan meddelandet.")))
                 unlock(komsendq_m)
                 return
+            elif lastdst and not to:
+                to = lastdst
+                tosend = m
+                
+                lock(self.mutex)
+                self.lasttime = time.time()
+                unlock(self.mutex)
+            else:                
+                tosend = m[m.find(":")+1:].strip()
 
-            to = m[:m.find(":")].strip()
-            tosend = m[m.find(":")+1:].strip()
-
+                lock(self.mutex)
+                self.lastdst = to
+                self.lasttime = time.time()
+                unlock(self.mutex)
+                
             self.send_message(to,tosend,type='chat')
 
-        elif currentmode == 'groupchat' or currentmode == 'singlechat':
+        elif currentmode == 'groupchat' or currentmode == 'chat':
             lock(self.mutex)
             dst = self.dst
             unlock(self.mutex)
-
-            if currentmode == 'singlechat':
-                currentmode = 'chat'
 
             self.send_message(to=dst,type=currentmode,m=m)
 
@@ -561,9 +589,9 @@ class person:
                        
             if self.conf['messages_only'] or \
                (not m.getThread() and not m.getSubject()) and \
-               m.getType() != 'error':                   
+               m.getType() != 'error' or m.getType() == 'groupchat':                   
                 sendmsg = 1
-                msg = u"Meddelande från %s: %s" % (
+                msg = u"%s: %s" % (
                     utf8_d(self.msg_sender(m.getFrom())),
                     utf8_d(m.getBody()))
 
@@ -573,11 +601,6 @@ class person:
                     utf8_d(self.msg_sender(m.getFrom())),
                     utf8_d(m.getError()),
                     utf8_d(m.getErrorCode()))
-            elif m.getType() == 'groupchat':
-                sendmsg = 1
-                msg = u"Meddelande från %s: %s" % (
-                    utf8_d(self.msg_sender(m.getFrom())),
-                    utf8_d(m.getBody()))
 
             elif m.getThread() or (not m.getType() and m.getSubject()):
                 sendletter = 1

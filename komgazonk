@@ -171,7 +171,7 @@ class Gazonk:
     def set_last_action(self):
         self.time_last_action = time.time()
 
-    def set_current_time(self, is_night):
+    def set_current_time(self):
         ct = time.time()
         now_is_night = GAZ_SLEEP_HOURS.count(time.localtime(ct).tm_hour) > 0
         if self.is_night != now_is_night:

@@ -1,6 +1,6 @@
 För att köra komgazonk behöver du först skapa en fil komgazonk_config.py
-som innehåller konfigurationen för din gazonkrobot. En template för hur den
-skall se ut finns i komgazonk_config_template.py
+som innehåller konfigurationen för din gazonkrobot. En template för hur
+den skall se ut finns i komgazonk_config_template.py
 
 Gör så här för att använda mig i LysKOM:
 
@@ -37,46 +37,53 @@ Kommandon som alla kan göra:
 Om du är Gazonk:
 
    1. Byt lösenord genom att skicka ett meddelande till mig med följande
-      innehåll 'lösenord <nytt lösenord>' Se till att du har det lösenord
-      du vill ha innan du skriver ledtrådar, för efter det kan du inte
-      längre byta lösenord.
+      innehåll 'lösenord <nytt lösenord>' Se till att du har det
+      lösenord du vill ha innan du skriver ledtrådar, för efter det kan
+      du inte längre byta lösenord.
 
-   2. Börja skriv in ledtrådar. En ledtråd skrivs in genom att skicka ett
-      meddelande till mig med innehållet 'ledtråd <En mycket givande
-      ledtråd>'. När den första ledtråden skrivits kommer den nya omgången
-      startas och alltså den första ledtråden skrivas ut.
+   2. Börja skriv in ledtrådar. En ledtråd skrivs in genom att skicka
+      ett meddelande till mig med innehållet 'ledtråd <En mycket givande
+      ledtråd>'. När den första ledtråden skrivits kommer den nya
+      omgången startas och alltså den första ledtråden skrivas ut.
 
    3. Skriv in fler ledtrådar enligt punkt 2. Dessa kommer att pytsas ut
       med jämna mellanrum.
 
-   4. Du kan visa alla ledtrådar du skrivit in genom att skriva 'ledtråd'
-      utan någonting efter i meddelandet.
+   4. Du kan visa alla ledtrådar du skrivit in genom att skriva
+      'ledtråd' utan någonting efter i meddelandet.
 
-   5. Alla ledtrådar kan bytas ut, även sådana som redan givits, genom att
-      skicka ett meddelande med 'byt ledtråd <ledtrådsnummer> <ny ledtråd>'
-      som innehåll.
+   5. Alla ledtrådar kan bytas ut, även sådana som redan givits, genom
+      att skicka ett meddelande med 'byt ledtråd <ledtrådsnummer> <ny
+      ledtråd>' som innehåll.
 
-   6. Under pågående omgång kan man som gazonk få reda på vad folk har
+   6. Du kan sätta in en ledtråd genom att använda kommandot 'sätt in
+      ledtråd <nr> <ledtråd>'. Du kan även ta bort en ledtråd. Det gör
+      du med kommandot 'ta bort ledtråd <nr> <ledtråd>'. Däremot får du
+      inte sätta in ledtrådar före sådana som redan visats. Du får inte
+      heller ta bort sådana som redan visats.
+
+   7. Under pågående omgång kan man som gazonk få reda på vad folk har
       gissat på. Kommandot 'gissningar' ger alla gissningar för omgången
       medan kommandot 'gissningar <nr>' ger alla gissningar för just den
       ledtråden. Slutligen ger 'gissningar personer' vilka personer som
       gissat och hur mycket de gissat.
 
-   7. Du kan ändra längden på intervallet som ledtrådar kan skickas med om
-      du har många ledtrådar kan en kortare tid passa bättre. Detta gör du
-      med kommandot 'tidsintervall <antal>[hms]' där h står för timmar, m
-      för minuter och s för sekunder. Detta går också att återställla till
-      det normala värdet genom kommandor 'återställ tidsintervall'.
+   8. Du kan ändra längden på intervallet som ledtrådar kan skickas med
+      om du har många ledtrådar kan en kortare tid passa bättre. Detta
+      gör du med kommandot 'tidsintervall <antal>[hms]' där h står för
+      timmar, m för minuter och s för sekunder. Detta går också att
+      återställla till det normala värdet genom kommandor 'återställ
+      tidsintervall'.
 
 Om du inte är Gazonk:
 
    1. Du gissar genom att skriva in '<gissning>' eller 'gissa
-      <gissning>'. Du måste använda den senare varianten om du vill gissa
-      på ord som också är kommandon, t.ex. 'gissa vem' gissar på ordet vem,
-      medan 'vem' skriver ut vem som är Gazonk.
+      <gissning>'. Du måste använda den senare varianten om du vill
+      gissa på ord som också är kommandon, t.ex. 'gissa vem' gissar på
+      ordet vem, medan 'vem' skriver ut vem som är Gazonk.
 
-Om ingen är Gazonk så är det först till kvarn som gäller och kommandot som
-används för att bli Gazonk då är 'ny gazonk'
+Om ingen är Gazonk så är det först till kvarn som gäller och kommandot
+som används för att bli Gazonk då är 'ny gazonk'
 
 
 Förklaringar till den statistik som ges periodvis:

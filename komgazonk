@@ -95,6 +95,8 @@ help_strings = {"": """Grundläggande kommandon:
 'ledtråd':                      Visar alla ledtrådar.
 'ledtråd <en ledtråd>':         Lägger in en ny ledtråd.
 'byt ledtråd <nr> <en ledtråd>: Byter ut en ledtråd mot en annan.
+'sätt in ledtråd <nr> en ledtråd>': Sätter in en ledtråd på given plats.
+'ta bort ledtråd <nr>':         Tar bort given ledtråd.
 'gissningar':                   Visar alla gissningar för nuvarande
                                 gazonkning.
 'gissningar personer':          Visar en tabell över vilka som gissat

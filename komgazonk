@@ -210,8 +210,8 @@ class Gazonk:
             glist = zip(gdb.db.values(), gdb.db.keys())
             for (guess, amount) in glist:
                 if not pcg_table.has_key(guess):
-                    table[guess] = [0]*(i-1)
-                table[guess].append(amount)
+                    pcg_table[guess] = [0]*(i-1)
+                pcg_table[guess].append(amount)
 
         pcg_table = zip(pcg_table.keys(), pcg_table.values())
 

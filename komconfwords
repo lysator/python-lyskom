@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some word statistics about a conference
-# $Id: komconfwords,v 1.1 2001/03/03 17:40:00 kent Exp $
+# $Id: komconfwords,v 1.2 2001/03/03 23:07:29 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -24,7 +24,7 @@ import cStringIO
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.1 $"
+vc_revision = "$Revision: 1.2 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -189,7 +189,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
             r.write("%4s) %4d  %s\n" % (pos_str, occ, word))
             pos = pos + 1
             last_occ = occ
-            if pos > 50: break
+            if pos > 100: break
 
         r.write("\n")
         
@@ -334,8 +334,8 @@ cstats.save_words()
 
 # People that are curiosity-challenged will comment out the following
 # two lines:
-conn.report_cache_usage()
-conn.show_req_histo()
+# conn.report_cache_usage()
+# conn.show_req_histo()
 
 # Exit successfully
 exit()

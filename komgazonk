@@ -515,6 +515,7 @@ class Gazonk:
                     send_message("Kan inte sätta in en ledtråd där. Det är enbart tillåtet\n" \
                                  "att sätta in ledtrådar efter de som redan visats.", \
                                  msg.sender)
+                    return
                 else:
                     self.clues[nr-1:nr-1] = [clue]
                     message = "Ledtråden sattes in på position %d: %s" % (nr, clue)
@@ -523,7 +524,7 @@ class Gazonk:
                 return
 
 
-            # Skall en ledtråd läggas till?
+            # Skall en ledtråd tas bort?
             m = Gazonk.re_ta_bort_ledtrad.match(msg.message)
             if m and len(self.password) == 0:
                 send_message("Skriv in lösenord innan du skriver in ledtrådar.", msg.sender)
@@ -534,11 +535,12 @@ class Gazonk:
                 if nr < 1 or nr > len(self.clues):
                     send_message("Ledtråden finns inte och kan därmed inte tas bort.", \
                                  msg.sender)
-                    message = "Ledtråden sattes in sist: %s" % clue
+                    return
                 elif nr <= self.current_clue + 1:
                     send_message("Kan inte ta bort en ledtråd där. Det är enbart tillåtet\n" \
                                  "att ta bort ledtrådar efter de som redan visats.", \
                                  msg.sender)
+                    return
                 else:
                     self.clues[nr-1:nr] = []
                     message = "Tog bort ledtråd nummer %d." % nr

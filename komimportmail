@@ -1,7 +1,7 @@
 #!/usr/bin/python-1.5.2
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.15 1999/10/13 12:47:52 kent Exp $
+# $Id: komimportmail,v 1.16 1999/10/14 10:22:12 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -18,9 +18,10 @@ import kom
 import os
 from komimportmail_config import *
 import types
+import re
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.15 $"
+vc_revision = "$Revision: 1.16 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -248,7 +249,6 @@ def create_article(mail, envelope_sender, envelope_recipients,
     # Message-ID -> text_no mapping below.
 
     texts_commenting_us = message_id_db.get_texts_commenting(message_id)
-    log("TCU: %s" % texts_commenting_us)
     if texts_commenting_us is not None:
         add_comment_links(text_no, texts_commenting_us)
 
@@ -263,7 +263,7 @@ def create_article(mail, envelope_sender, envelope_recipients,
     # Threading. If we are trying to comment a Message-ID that
     # is not yet present: register for future threading.
     if parent_message_id is not None and parent_text_no is None:
-        log("Registering us a a comment to non-present %s" %
+        log("Registering us as comment to non-present %s" %
             parent_message_id)
         message_id_db.register_link(parent_message_id, text_no)
 
@@ -416,11 +416,13 @@ def create_article_part(mail,
                                      mime_filename))
 
     # The complete set of MIME part headers (no decoding of these)
-    # FIXME: If the imported mail is just one single discrete part, this
-    # is identical to the mail headers in MX_MISC.
-    aux_items.append(kom.AuxItem(kom.AI_MX_MIME_MISC,
-                                 string.join(part.headers.headers, "")))
-
+    # For the first part, the MIME headers are mixed together
+    # with the mail headers. Therefore, we try to remove
+    # non-MIME-headers here.
+    
+    aux_items.append(kom.AuxItem(kom.AI_MX_MIME_MISC, \
+                                 string.join(only_mime_headers( \
+                                     part.headers.headers), "")))
 
     # Subject
     if mail.headers.has_key("Subject"):
@@ -617,7 +619,19 @@ def last_message_id_in(header):
     else:
         return None
 
-# HANDLING THE MESSAGE-ID-DATABASE
+# Filter a list of headers, keeping only the MIME-related ones.
+# Currently, we consider "MIME-Version" and any header beginning
+# with "Content-" as MIME-related.
+
+re_good_mime_header = re.compile("(^MIME-Version:|^Content-)",
+                                 re.IGNORECASE)
+
+def only_mime_headers(headers):
+    ok_headers = []
+    for header in headers:
+        if re_good_mime_header.match(header):
+            ok_headers.append(header)
+    return ok_headers
 
 # MAIN
 

@@ -1,10 +1,10 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komparam.py,v 1.3 1999/07/23 18:12:31 kent Exp $
+# $Id: komparam.py,v 1.4 1999/10/18 10:21:57 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Handle connection and login in a common way. Parameters are
 # searched for in the following order:
-# 1) Command line arguments
+# 1) Command line arguments (NOT DONE YET)
 # 2) Environment variables
 # 3) ~/.komrc file
 

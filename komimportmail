@@ -1,7 +1,7 @@
 #!/usr/bin/python-1.5.2
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.16 1999/10/14 10:22:12 kent Exp $
+# $Id: komimportmail,v 1.17 1999/10/18 10:28:42 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -19,16 +19,17 @@ import os
 from komimportmail_config import *
 import types
 import re
+import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.16 $"
+vc_revision = "$Revision: 1.17 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
 def error_exit(str, exit_code):
     line = "FATAL: " + str
     sys.stderr.write(line + "\n")
-    log(line + " (exit: %d)" % exit_code)
+    log(line + " (exit: %d)" % exit_code, LOG_ERROR)
     sys.exit(exit_code)
 
 # Exit codes from sendmail-8.9.3/src/sysexits.c:
@@ -39,11 +40,28 @@ EX_NOUSER = 67
 EX_UNAVAILABLE = 69 # Catchall
 EX_TEMPFAIL = 75 # This is the key to making sendmail requeue a mail!
 
-# Logging
+# Log levels
+log_levels = {0: "ERROR",
+              1: "WARNING",
+              2: "INFO",
+              3: "DEBUG"}
 
+LOG_ERROR = 0
+LOG_WARNING = 1
+LOG_INFO = 2
+LOG_DEBUG = 3
+
+def find_log_level(name):
+    name = string.upper(name)
+    for (l, n) in log_levels.items():
+        if name == n:
+            return l
+    raise ValueError
+
+# Logging
 log_file = None
 log_pid = None
-def log(line):
+def log(line, level):
     global log_file
     global log_pid
     
@@ -52,8 +70,9 @@ def log(line):
 
     if log_pid is None:
         log_pid = os.getpid()
-        
-    log_file.write("%d: %s\n" % (log_pid, line))
+
+    if level <= log_level:
+        log_file.write("%d: %s\n" % (log_pid, line))
 
 # Class to handle Message-ID:s
 
@@ -107,33 +126,53 @@ class MessageIDDb:
 
     # Garbage collect the Message-ID database
     def gc_message_id_db(self):
-        log("Garbage collection started")
+        log("Garbage collection started", LOG_INFO)
         s = self.db.exclusive_open()
     
         ctr_left = 0
         ctr_gone = 0
         id_list = s.keys()
-        log("Will check %d articles" % (len(id_list)))
+
+        log("Will check %d articles" % (len(id_list)),
+            LOG_INFO)
         for id in id_list:
             data = s[id]
             if type(data) == types.TupleType:
+                # Normal Message-ID --> text_no
                 (text_no, created) = data
                 try:
-                    ts = kom.ReqGetTextStat(c, text_no).response()
+                    ts = c.textstats[text_no] # Use the cache
                     ctr_left = ctr_left + 1
                 except kom.NoSuchText:
                     ctr_gone = ctr_gone + 1
-                    log("GC %7d: %s" % (text_no, id))
+                    log("GC %7d: %s" % (text_no, id), LOG_INFO)
                     del s[id]
+            elif type(data) == types.ListType:
+                # Backwards Message-ID --> [text_no_list]
+                all_texts_gone = 1
+                for text_no in data:
+                    try:
+                        ts = c.textstats[text_no] # Use the cache
+                        all_texts_gone = 0
+                        break
+                    except kom.NoSuchText:
+                        pass
+                if all_texts_gone:
+                    ctr_gone = ctr_gone + 1
+                    log("GC BACK   : %s" % (id), LOG_INFO)
+                    del s[id]
+                else:
+                    ctr_left = ctr_left + 1
             else:
-                print "%s: unknown type, cannot GC" % (id)
+                log("%s: unknown type, cannot GC" % (id), LOG_WARNING)
                 ctr_left = ctr_left + 1
                 
         self.db.exclusive_close()
         log("Garbage collection finished (left: %d, gone: %d)" % \
-                (ctr_left, ctr_gone))
+                (ctr_left, ctr_gone),
+            LOG_INFO)
 
-    # Dump Message-ID database
+    # Dump Message-ID database to stdout
     def dump(self):
         s = self.db.shared_open()
     
@@ -160,14 +199,14 @@ def create_article_or_add_recipients(mail,
     except:
         error_exit("No message ID in mail", EX_DATAERR)
 
-    log("Handling mail with Message-ID: %s" % message_id)
+    log("Handling mail with Message-ID: %s" % message_id, LOG_INFO)
 
     # Lookup Message-ID -> Text-No (fails if this is a new mail)
     existing_text_no = message_id_db.get_text_no_from_id(message_id)
     if existing_text_no is None:
-        log("This mail is new")
+        log("This mail is new", LOG_INFO)
     else:
-        log("This is existing article %d" % existing_text_no)
+        log("This is existing article %d" % existing_text_no, LOG_INFO)
 
     # Map recipient names to conference numbers
     recipient_list = name_list_to_conf_no_list(envelope_recipients)
@@ -196,10 +235,10 @@ def create_article(mail, envelope_sender, envelope_recipients,
         parent_text_no = message_id_db.get_text_no_from_id(parent_message_id)
         if parent_text_no is not None:
             log("Comment to %s (article %d)" % \
-                (parent_message_id, parent_text_no))
+                (parent_message_id, parent_text_no), LOG_INFO)
         else:
             log("Comment to %s (not present in KOM?)" % \
-                (parent_message_id))
+                (parent_message_id), LOG_INFO)
     else:
         # No threading
         parent_text_no = None
@@ -215,7 +254,7 @@ def create_article(mail, envelope_sender, envelope_recipients,
     # hierarchical structure in the MIME message.
 
     parts = mail.linear_list_of_discrete_parts()
-    log("Number of MIME parts: %d" % len(parts))
+    log("Number of MIME parts: %d" % len(parts), LOG_INFO)
     
     # Handle the first (perhaps only) part
     text_no = create_article_part(mail,
@@ -255,16 +294,16 @@ def create_article(mail, envelope_sender, envelope_recipients,
     # Threading. Register Message-ID -> our own text_no.
     try:
         message_id_db.register_text(message_id, text_no)
-        log("Message-ID recorded in database.")
+        log("Message-ID recorded in database.", LOG_INFO)
     except:
-        log("Failed to record Message-ID in database.")
+        log("Failed to record Message-ID in database.", LOG_WARNING)
         pass
 
     # Threading. If we are trying to comment a Message-ID that
     # is not yet present: register for future threading.
     if parent_message_id is not None and parent_text_no is None:
         log("Registering us as comment to non-present %s" %
-            parent_message_id)
+            parent_message_id, LOG_INFO)
         message_id_db.register_link(parent_message_id, text_no)
 
 
@@ -402,12 +441,18 @@ def create_article_part(mail,
 
     # Handle MIME headers (creating aux-items)
     # We put these aux-items on the main article and the appendices
-
+    
     # MIME Content type
+    # The server rejects bad content-types that does not contain a slash,
+    # so we don't try to feed it such bogosities.
+
     mime_type = part.headers.gettype()
-    aux_items.append(kom.AuxItem(kom.AI_CONTENT_TYPE,
-                                 mime_type))
-    log("MIME type of this part: %s" % mime_type)
+    if string.find(mime_type, "/") == -1:
+        log("Bad MIME type %s not used" % mime_type, LOG_WARNING)
+    else:
+        aux_items.append(kom.AuxItem(kom.AI_CONTENT_TYPE,
+                                     mime_type))
+        log("MIME type of this part: %s" % mime_type, LOG_INFO)
 
     # MIME filename (Name parameter of Content-Type header)
     mime_filename = part.headers.getparam("name")
@@ -458,7 +503,7 @@ def send_to_kom(subject, body, misc_info, aux_items):
             text_no = kom.ReqCreateText(c,
                                         subject + "\n" + body,
                                         misc_info, aux_items).response()
-            log("Article %d created" % text_no)
+            log("Article %d created" % text_no, LOG_INFO)
             attempting_to_send = 0
         except kom.NoSuchText, error_status:
             # We assume this is because of a bad Comment-To link
@@ -468,12 +513,12 @@ def send_to_kom(subject, body, misc_info, aux_items):
             attempting_to_send = 0
             try:
                 bad_text_no = string.atoi(str(error_status))
-                log("Article creation failed as commented article %d does not exist" % bad_text_no)
+                log("Article creation failed as commented article %d does not exist" % bad_text_no, LOG_WARNING)
                 for i in range(0,len(misc_info.comment_to_list)):
                     if misc_info.comment_to_list[i].text_no == bad_text_no:
                         del misc_info.comment_to_list[i]
                         attempting_to_send = 1
-                        log("Retrying with offending misc-item removed")
+                        log("Retrying with offending misc-item removed", LOG_DEBUG)
                         break
             except:
                 # If we fail to remove the offending Misc-Info item,
@@ -492,7 +537,7 @@ def add_mx_mime_part_in_items(parent_no, child_nos):
         kom.ReqModifyTextInfo(c, parent_no, [], aux_items)
     except kom.ServerError:
         log("Failed (%s) to add mx-mime-part-in items" % \
-            (sys.exc_info()[0]))
+            (sys.exc_info()[0]), LOG_WARNING)
         
 
 # Add more recipients to this article
@@ -509,10 +554,10 @@ def add_recipients(mail, envelope_sender, recipient_list,
                                 existing_text_no,
                                 recipient,
                                 kom.MIR_TO).response()
-            log("Added conference %d as recipient" % recipient)
+            log("Added conference %d as recipient" % recipient, LOG_INFO)
         except kom.ServerError:
             log("Failed (%s) to add conference %d as recipient" % \
-                (sys.exc_info()[0], recipient))
+                (sys.exc_info()[0], recipient), LOG_WARNING)
 
 # Add comment links to an article
 def add_comment_links(text_no, commenting_text_nos):
@@ -524,10 +569,11 @@ def add_comment_links(text_no, commenting_text_nos):
                               commenting_text_no,
                               text_no).response()
             log("Added %s as comment to %d" % (commenting_text_no,
-                                               text_no))
+                                               text_no), LOG_INFO)
         except kom.ServerError:
             log("Failed (%s) to add %d as comment to %d" % \
-                (sys.exc_info()[0], commenting_text_no, text_no))
+                (sys.exc_info()[0], commenting_text_no, text_no),
+                LOG_WARNING)
 
 # Convert a list of recipient names to a list of conference numbers
 # Note that the recipient names should not contain the @ or the domain
@@ -566,10 +612,10 @@ def name_list_to_conf_no_list(name_list):
             try:
                 conf_stat = c.conferences[conf_no]
                 conf_no_list.append(conf_no)
-                log("Numeric recipient %d seems to be OK" % conf_no)
+                log("Numeric recipient %d seems to be OK" % conf_no, LOG_INFO)
             except:
                 log("Numeric recipient %d ignored (conference not found)" % \
-                    conf_no)
+                    conf_no, LOG_WARNING)
             continue # No other formats will be checked
 
         # 2) Other string = name to look up
@@ -579,13 +625,15 @@ def name_list_to_conf_no_list(name_list):
                                 want_pers = 1,
                                 want_confs = 1)
         if len(matches) == 0:
-            log("Name recipient '%s' gave no match" % name)
+            log("Name recipient '%s' gave no match" % name, LOG_WARNING)
         elif len(matches) > 1:
             log("Name recipient '%s' gave %d matches (ambiguous)" % \
-                (name, len(matches)))
+                (name, len(matches)),
+                LOG_WARNING)
         else:
             log("Name recipient '%s' matches %d: '%s'" % \
-                (name, matches[0][0], matches[0][1]))
+                (name, matches[0][0], matches[0][1]),
+                LOG_INFO)
             conf_no_list.append(matches[0][0])            
 
     return conf_no_list
@@ -603,12 +651,14 @@ def message_id_of_parent(headers):
             msg_id = last_message_id_in(headers[field_name])
             if msg_id:
                 log("Threading on %s: %s)" % \
-                    (field_name, msg_id))
+                    (field_name, msg_id),
+                    LOG_INFO)
                 return msg_id
             else:
-                log("DEBUG: No ID found in %s: '%s'" % \
-                    (field_name, headers[field_name]))
-    log("No threading possible.")
+                log("No ID found in %s: '%s'" % \
+                    (field_name, headers[field_name]),
+                    LOG_DEBUG)
+    log("No threading possible.", LOG_INFO)
     return None
 
 def last_message_id_in(header):
@@ -635,23 +685,57 @@ def only_mime_headers(headers):
 
 # MAIN
 
+# Options totally changing the behaviour
+#   --gc	Do a garbage collection
+#   --dump	Dump Message-ID database
+#
+# Normal options:
+#   --log-level=LEVEL
+#		Set log level to (ERROR, WARNING, INFO, DEBUG)
+#		Default is INFO
+#
 # Arguments:
 #   envelope-sender [envelope-recipient...]
-# Special case:
-#   If just one argument is present, and that is "--gc", then do
-#   a garbage collection of the Message-ID-database.
+#
+# There should be at least one envelope-recipient.
 
-gc = 0
-dump = 0
-if len(sys.argv) == 2 and sys.argv[1] == "--gc":
-    gc = 1
-elif len(sys.argv) == 2 and sys.argv[1] == "--dump":
-    dump = 1
-elif len(sys.argv) < 3:
-    error_exit("Wrong number of arguments", EX_USAGE)
-else:
-    envelope_sender = sys.argv[1]
-    envelope_recipients = sys.argv[2:]
+FUNC_IMPORT_MAIL = 0; FUNC_GC = 1; FUNC_DUMP = 2
+function = FUNC_IMPORT_MAIL
+log_level = LOG_INFO
+
+try:
+    options, arguments = getopt.getopt(sys.argv[1:],
+                                       "",
+                                       [
+                                           "gc",
+                                           "dump",
+                                           "log-level=",
+                                           ])
+except getopt.error, reason:
+    error_exit("Usage error (%s)" % reason, EX_USAGE)
+
+for (opt, optarg) in options:
+    if opt == "--gc":
+        function = FUNC_GC
+    elif opt == "--dump":
+        function = FUNC_DUMP
+    elif opt == "--log-level":
+        try:
+            new_log_level = find_log_level(optarg)
+        except:
+            error_exit("Bad --log-level=%s" % optarg, EX_USAGE)
+        log_level = new_log_level
+    else:
+        error_exit("Bad option '%s'" % opt, EX_USAGE)
+
+# Check for arguments
+
+if function == FUNC_IMPORT_MAIL:
+    if len(arguments) < 2:
+        error_exit("Too few arguments (%d)" % len(arguments), EX_USAGE)
+    else:
+        envelope_sender = arguments[0]
+        envelope_recipients = arguments[1:]
 
 # Connect and log in
 
@@ -666,6 +750,7 @@ except:
     error_exit("Failed to connect to LysKOM server", EX_TEMPFAIL)
 
 # Prepare to use the Message-ID database
+
 try:
     message_id_db = MessageIDDb(ID_DB_FILE)
 except:
@@ -674,19 +759,22 @@ except:
     error_exit("Cannot access Message-ID database", EX_TEMPFAIL)
 
 # Choose function
-if gc:
+if function == FUNC_GC:
     # Function: Garbage collection
     message_id_db.gc_message_id_db()
-elif dump:
+elif function == FUNC_DUMP:
     # Function: Dump
     message_id_db.dump()
-    
-else:
+elif function == FUNC_IMPORT_MAIL:
     # Function: Normal mail handling
     mail = mimereader.Message(sys.stdin)
-    
-    # Create an article or add recipients to an existing one
-    create_article_or_add_recipients(mail, envelope_sender, envelope_recipients)
+    create_article_or_add_recipients(mail,
+                                     envelope_sender,
+                                     envelope_recipients)
+else:
+    # Function: ?
+    error_exit("Internal error: unknown function", EX_USAGE)
 
 # Exit successfully
+log("Done.", LOG_INFO)
 sys.exit(EX_OK)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: iso-8859-1 -*-
 # Get server statistics using get-stats (protocol version 11 and up)
-# $Id: komserverstats,v 1.1 2003/09/02 18:20:13 kent Exp $
+# $Id: komserverstats,v 1.2 2003/09/02 19:34:08 kent Exp $
 # (C) 2003 Kent Engström. Released under GPL.
 
 import sys
@@ -34,6 +34,9 @@ ogrp.add_option("--highest-global", action="store_true",
 ogrp.add_option("--highest-local",
                 help = "get the highest local text number in CONF",
                 metavar="CONF")
+ogrp.add_option("--no-of-created",
+                help = "get the number of texts created by PERS",
+                metavar="PERS")
 optp.add_option_group(ogrp)
 
 (options, args) = optp.parse_args()
@@ -91,6 +94,20 @@ elif options.highest_local:
         errwrite("%s not found\n" % options.highest_local)
         sys.exit(1)
     print conn.uconferences[conference].highest_local_no
+
+elif options.no_of_created:
+    persons = conn.lookup_name(options.no_of_created,
+                               want_pers = 1, want_confs = 0)
+    if len(persons) == 1:
+        person = persons[0][0]
+    elif len(persons) > 1:
+        errwrite("%s is not a unique name\n"% options.no_of_created)
+        sys.exit(1)
+    else:
+        errwrite("%s not found\n" % options.no_of_created)
+        sys.exit(1)
+    print conn.persons[person].no_of_created_texts + \
+          conn.persons[person].first_created_local_no - 1
 
 else:
     optp.print_help()

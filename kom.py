@@ -1,6 +1,6 @@
 # -*- coding: iso-8859-1 -*-
 # LysKOM Protocol A version 10/11 client interface for Python
-# $Id: kom.py,v 1.31 2003/08/27 21:08:54 kent Exp $
+# $Id: kom.py,v 1.32 2003/09/02 18:17:21 kent Exp $
 # (C) 1999-2002 Kent Engström. Released under GPL.
 
 import socket
@@ -2018,9 +2018,9 @@ class Stats:
         self.descent_rate = c.parse_float()
 
     def __repr__(self):
-        return "<Stats %f + %f -%f>" % (self.average,
-                                        self.ascent_rate,
-                                        self.descent_rate)
+        return "<Stats %f + %f - %f>" % (self.average,
+                                         self.ascent_rate,
+                                         self.descent_rate)
 
 #
 # CLASS for a connection

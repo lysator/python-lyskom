@@ -1,0 +1,106 @@
+#!/usr/bin/python
+# LysKOM Protocol A version 10 client interface for Python
+# $Id: komwho,v 1.1 1999/07/14 22:39:12 kent Exp $
+# (C) 1999 Kent Engström. Released under GPL.
+
+import kom
+import komparam
+import sys
+import getopt
+
+
+# Aux function:
+def time_text(secs):
+    if secs < 60:
+        return "%ds" % secs
+    elif secs < 3600:
+        return "%dm" % (secs/60)
+    else:
+        return "%dh" % (secs/3600)
+
+# Connect and log in
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], error))
+    sys.exit(1)
+
+# Check for options
+
+verbose = 0
+idle_time = 0
+show_visible = 1
+show_invisible = 0
+sort_name = 0
+sort_type = 0
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   ["verbose",
+                                    "idle-time",
+                                    "show-visible","hide-visible",
+                                    "show-invisible","hide-invisible",
+                                    "sort-session",
+                                    "sort-name",
+                                    "sort-idle",
+                                    ])
+for (opt, optarg) in options:
+    if opt == "--verbose":
+        verbose = 1
+    elif opt == "--idle-time":
+        idle_time = 1
+    elif opt == "--show-visible":
+        show_visible = 1
+    elif opt == "--hide-visible":
+        show_visible = 0
+    elif opt == "--show-invisible":
+        show_invisible = 1
+    elif opt == "--hide-invisible":
+        show_invisible = 0
+    elif opt == "--sort-session":
+        sort_name = 0
+    elif opt == "--sort-name":
+        sort_type = 1
+    elif opt == "--sort-idle":
+        sort_type = 2
+        
+# List logged in users
+
+session_list = kom.ReqWhoIsOnDynamic(conn,
+                                     want_visible = show_visible,
+                                     want_invisible = show_invisible,
+                                     active_last = 0).response()
+entries_dict = {}
+for session in session_list:
+    static = kom.ReqGetStaticSessionInfo(conn, session.session).response()
+    name = conn.conf_name(session.person)
+    if sort_type == 1:
+        key = (name, session.session)
+    elif sort_type == 2:
+        key = (session.idle_time, session)
+    else:
+        key = session.session
+        
+    entry =  "%3d %-37s %-37s" % \
+            (session.session,
+             name[:37],
+             conn.conf_name(session.working_conference)[:37]
+             )
+    if verbose:
+        if idle_time:
+            idle_text = " [%s]" % time_text(session.idle_time)
+        else:
+            idle_text = ""
+        entry = entry + "\n    %-37s %-37s" % \
+                ((static.username + "@" + static.hostname)[:37],
+                 ("(" + session.what_am_i_doing + ")" + idle_text)[:37])
+
+    entries_dict[key] = entry
+
+entries_keys = entries_dict.keys()
+entries_keys.sort()
+for key in entries_keys:
+    print entries_dict[key]
+    
+    

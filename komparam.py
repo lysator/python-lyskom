@@ -1,6 +1,8 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komparam.py,v 1.5 2001/01/22 20:45:46 lundmark Exp $
+# $Id: komparam.py,v 1.6 2003/09/02 18:18:15 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
+
+# NOTE: This module is deprecated in favour of komconnect.py
 
 # Handle connection and login in a common way. Parameters are
 # searched for in the following order:

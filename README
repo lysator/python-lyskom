@@ -106,6 +106,19 @@ COPYRIGHT
   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
+CHECKING OUT ANONYMOUSLY
+
+  export CVSROOT=:pserver:anonymous@cvs.lysator.liu.se:/cvsroot/python-lyskom
+  cvs login (press RETURN when asked for password)
+  cvs co python-lyskom
+
+CONTRIBUTING
+
+If you want to contribute, please ask Kent Engström <kent@lysator.liu.se>
+to create an account for you. You will then be able to use Lysator's
+CVS server (cvs.lysator.liu.se) to access the repository R/W.
+
+
 CONTACT INFORMATION
 
   Please send questions and bug reports to kent@lysator.liu.se

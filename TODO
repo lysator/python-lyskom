@@ -3,39 +3,31 @@ This is an -*- outline -*- file
 THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 
 * komimportmail
-** Add LOGLEVEL configuration setting
-*** Levels: ERROR, WARNING, INFO, DEBUG1, DEBUG2, ...
-*** Command line flag (need better parsing)
-
+** Add time logging
 ** Check what exit code is used for "already present" (duplication)
-** Check AI_MX_IN_REPLY_TO semantics
-** multipart/alternative with text/plain and text/html: zap HTML!
-
+** Check AI_MX_IN_REPLY_TO semantics (should we include what we really used?)
+** multipart/alternative with text/plain and text/html: zap HTML?
 ** mail2kom can use recode - should we do that too?
 ** Is there any need for decoding of ?B? headers?
-** Implement GC for backlinks
 ** Tests
 *** Test GC in real life situation: is it working? is it locking OK?
 *** Profile and optimize (it's rather slow now)
 ** Get rid of ugly #!/usr/bin/python-1.5.2
 
 ** Client issues
+*** elisp
+**** Wrong author name displayed when writing a comment
 *** WinKOM
 *** JysKom
 
-* New programs
-** kommove: batch article mover for moderators
-*** give --root and --from on command line
-*** show articles (~ 10 lines of text)
-*** ask for every text what to do:
-**** leave as-is
-**** leave as-is, prune (do not continue to recurse)
-**** move to named conference
-**** move to conference used earlier (by number)
-**** add conference to from-set?
-**** batch-below-this-node
+* kommove: batch article mover for moderators
+** add conference to from-set?
+** batch-below-this-node?
+** Ability to evacuate all messages from a conference
 
-* Other programs
+* New programs
+** komdump: dump a tree of texts
+*** Rather trivial application of komwalk and komformat
 
 * Documentation
 ** Include GPL statements everywhere
@@ -44,8 +36,8 @@ THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 ** Document own aux-items (here or in Protocol-A docs)
 
 * Almost unrelated
+** Received: displayer
 ** mailmapper
-
 Write a program that inputs one or more letters, with a lot of
 Received:-lines, and emits a map (in VCG format) of the various paths
 used.

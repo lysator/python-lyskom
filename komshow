@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komshow,v 1.2 1999/07/23 13:00:32 kent Exp $
+# $Id: komshow,v 1.3 1999/10/09 14:18:16 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom
@@ -10,7 +10,7 @@ import getopt
 import string
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.2 $"
+vc_revision = "$Revision: 1.3 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -242,7 +242,7 @@ aux_item_names = {
     # Experimental items
     kom.AI_MX_MIME_MISC: "MX_MIME_MISC",
     kom.AI_MX_MIME_BELONGS_TO: "MX_MIME_BELONGS_TO",
-    kom.AI_MX_MIME_CONTENT_TYPE: "MX_MIME_CONTENT_TYPE",
+    kom.AI_MX_MIME_PART_IN: "MX_MIME_PART_IN",
     kom.AI_MX_ENVELOPE_SENDER: "MX_ENVELOPE_SENDER",
     kom.AI_MX_MIME_FILE_NAME: "MX_MIME_FILE_NAME",
     }

@@ -504,6 +504,7 @@ class Gazonk:
                 self.current_time_interval = amount
                 send_message("Tidsintervallet är nu %d sekunder mellan varje ledtråd" % amount, \
                              msg.sender)
+                return
 
             # Ställ tillbaka tidsintervallet.
             m = Gazonk.re_ater_tidsintervall.search(msg.message)
@@ -512,6 +513,7 @@ class Gazonk:
                 send_message("Tidsintervallet är nu %d sekunder mellan varje ledtråd" % \
                              self.current_time_interval, \
                              msg.sender)
+                return
 
         # Saker som alla får göra:
 

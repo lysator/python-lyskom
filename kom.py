@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.13 1999/10/09 14:17:10 kent Exp $
+# $Id: kom.py,v 1.14 1999/10/18 10:24:51 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -7,12 +7,13 @@ import time
 import string
 
 #
-# Variables
+# Constants
 #
 
 whitespace = " \t\r\n"
 digits = "01234567890"
 ord_0 = ord("0")
+MAX_TEXT_SIZE = int(2**31L-1)
 
 # All errors belong to this class
 class Error(Exception): pass
@@ -339,7 +340,9 @@ class ReqGetMarks(Request):
 
 # get-text [25] (1) Recommended
 class ReqGetText(Request):
-    def __init__(self, c, text_no, start_char, end_char):
+    def __init__(self, c, text_no,
+                 start_char = 0,
+                 end_char = MAX_TEXT_SIZE):
         self.register(c)
         c.send_string("%d 25 %d %d %d\n" %
                       (self.id, text_no, start_char, end_char))

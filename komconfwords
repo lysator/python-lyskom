@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some word statistics about a conference
-# $Id: komconfwords,v 1.13 2001/06/11 20:33:35 kent Exp $
+# $Id: komconfwords,v 1.14 2001/06/12 17:27:38 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -25,7 +25,7 @@ import whrandom
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.13 $"
+vc_revision = "$Revision: 1.14 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -128,11 +128,13 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
         # We count old and new words, and later merge both back into self.words
         self.no_of_words = 0
         self.new_words = {}
-        self.new_words_author = {}
         self.no_of_new_words = 0
         self.old_words = {}
         self.no_of_old_words = 0
 
+        self.new_words_author = {}
+        self.author_count = {}
+        
     def walk(self):
         komconfwalker.ConfTemporalWalker.walk(self)
         # Afterwards, we should include the new words in the table of all words
@@ -146,6 +148,9 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
             return
 
         text = kom.ReqGetText(self.conn, global_no, 0, 1024*1024).response()
+
+        self.author_count[ts.author] = self.author_count.get(ts.author, 0) + 1
+        
         for word in split_text_into_words(text):
             self.no_of_words = self.no_of_words + 1
             if self.words.has_key(word):
@@ -251,7 +256,8 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
     
             r.write("\n")
 
-            r.write(" Pos Antal  Författare\n")
+            r.write(" Pos   Ord  Ord/ Författare\n")
+            r.write("            inl\n")
             r.write("-"*73 + "\n")
             sortlist = map(lambda x: (-x[1], x[0]), author_word_count.items())
             sortlist.sort()
@@ -264,8 +270,10 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
                 else:
                     pos_str = '"'
 
+                no_texts = self.author_count[author]
+                words_per_text = float(occ)/no_texts
                 author_name = self.conn.conf_name(author)
-                r.write("%4s) %4d  %s\n" % (pos_str, occ, author_name))
+                r.write("%4s) %4d %4.1f  %s\n" % (pos_str, occ, words_per_text, author_name))
                 pos = pos + 1
                 last_occ = occ
                 

@@ -41,4 +41,13 @@ GAZ_PW_LENGTH = 12
 # Number of warnings before gazonk is thrown out.
 GAZ_MAX_WARNINGS = 4
 
+# When to display statistics.
+# 0 - never
+# 1 - hourly
+# 2 - dayly
+# 3 - weekly
+# 4 - monthly
+# 5 - yearly
+GAZ_DISPLAY_STATISTICS = 4
+
 # -- CONFIGURATION ENDS HERE ---

@@ -9,14 +9,17 @@ meddelande" i elisp-klienten) och inte genom brev.
 
 Kommandon som alla kan göra:
 
-   1. 'Vem':
+   1. 'Hjälp':
+      Visar en trevlig hjälp-text.
+
+   2. 'Vem':
       Detta skriver du för att ta reda på vem som är Gazonk för
       tillfället.
 
-   2. 'Visa':
+   3. 'Visa':
       Visar alla ledtrådar som hittills är givna i denna omgång.
 
-   3. 'Nästa':
+   4. 'Nästa':
       Talar om hur lång tid det är tills nästa ledtråd kommer att ges.
 
 Om du är Gazonk:

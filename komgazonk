@@ -16,16 +16,74 @@ import cPickle
 import random
 
 CLIENTNAME="komgazonk"
-VERSION="0.1.0"
+VERSION="0.1.1"
 
 INVISIBLE = 1
 
 MAX_ENTRIES_GUESS_LIST = 200
 
 wrong_guess_list = ["Fel, fel, fel, fel!", \
+                    "Nepp!", \
+                    "Nähä!", \
+                    "Inte alls.", \
+                    "Helt fel.", \
                     "Trodde du verkligen att det skulle vara rätt?", \
                     "Om du läser ledtrådarna först går det nog bättre.", \
-                    "En daggmask hade kommit på något bättre än det där."]
+                    "En daggmask hade kommit på något bättre än det där.", \
+                    "Till och med du borde kunna komma på något bättre.", \
+                    "Det var ju riktigt nära! Nej, jag bara skojade.", \
+                    "Jag hoppas för din skull att det där var en feltryckning.", \
+                    "*Gäsp* Säg till när du skall göra en seriös gissning.", \
+                    "Du är inte ens nära.", \
+                    "Mwhahahahahahahah.", \
+                    "Flicka lilla, du kanske borde fråga din mamma?", \
+                    "Fet chans, grabbhalva!", \
+                    "Där högg du allt i sten.", \
+                    "Whoah, ingen dålig gissning!", \
+                    "Mmmm, nästan. Försök igen.", \
+                    "Du ska gissa med svenska ord, hörrö!", \
+                    "Var det där en gissning, eller?", \
+                    "Du vet ju inte ens HUR man gissar!", \
+                    "Gissa på du, än är det långt kvar.", \
+                    "Ta du och vänta på nästa ledtråd.", \
+                    "Kom igen om ett par dar, då är en ny gazonk på G.", \
+                    "Det där lösenordet var ju gazonk förra veckan.", \
+                    "Det där har någon annan redan gissat på.", \
+                    "Hörde du det där ordet på radion nyss, eller?", \
+                    "I vilken ordbok hittade du den gissningen då?", \
+                    "Du fuskar, du har Gooooooglat!!! Men det var ändå fel.", \
+                    "Loser!", \
+                    "En nyfödd gissar bättre än du.", \
+                    "Du är ful, och fel gissar du också!", \
+                    "Trodde du ja!", \
+                    "Hur många tror du inte har gissat på det före dej då?", \
+                    "Ta o lägg ner, va?", \
+                    "Så puttinuttigt då... MEN DET ÄR FEEEEL!", \
+                    "Hur tänker du då?", \
+                    "Du skulle nog svängt vänster där borta... Du är ju helt vilse!", \
+                    "Pfft, knappast.", \
+                    "Men du är ju hopplös!", \
+                    "Skärp dig!"]
+
+help_string = """Möjliga kommandon:
+------------------
+'hjälp': Skicka detta hjälpmeddelande.
+'vem':   Talar om vem som är gazonk.
+'visa':  Listar givna ledtrådar.
+'nästa': Talar om hur långt det är kvar till nästa ledtråd.\n
+Om du är gazonk:
+----------------
+'lösenord':                     Visar lösenord om omgången är startad.
+'lösenord <nytt lösenord>':     Byter lösenord då omgång ej är startad.
+'ledtråd':                      Visar alla ledtrådar.
+'ledtråd <en ledtråd>':         Lägger in en ny ledtråd.
+'byt ledtråd <nr> <en ledtråd>: Byter ut en ledtråd mot en annan.\n
+Om du inte är gazonk:
+---------------------
+'gissa <gissning>:              Gissa på lösenordet.
+'<gissning>:                    Samma som ovan.
+'ny gazonk':                    Bli gazonk, om ingen är gazonk redan."""
+
 class Gazonk:
     re_auto_reply = re.compile("^Auto-reply:", re.IGNORECASE)
     re_ny_gazonk = re.compile("^ny gazonk", re.IGNORECASE)
@@ -39,6 +97,7 @@ class Gazonk:
     re_vem = re.compile("^vem", re.IGNORECASE)
     re_visa = re.compile("^visa", re.IGNORECASE)
     re_nasta = re.compile("^nästa", re.IGNORECASE)
+    re_hjalp = re.compile("^hjälp", re.IGNORECASE)
 
     def __init__(self):
         self.monthly = MonthlyStats()
@@ -57,22 +116,8 @@ class Gazonk:
         self.current_guesses.reset()
         self.per_clue_guesses = []
 
-    def monthly_reset(self):
-        self.all_guesses.reset()
-
     def set_last_action(self):
         self.time_last_action = time.time()
-
-    def print_me(self):
-        gaz_name = "no name"
-        if self.person_no > 0:
-            gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
-        print "Gazonk: %s" % gaz_name
-        print "Password: %s" % self.password
-        print "Clues: " + str(self.clues)
-        print "Current clue: %d" % self.current_clue
-        print "Time for last action: " + str(self.time_last_action)
-        print "Num warnings sent: %d" % self.warnings_sent
 
     def create_guess_list_string(self, max_nr = MAX_ENTRIES_GUESS_LIST):
         message = ""
@@ -88,7 +133,7 @@ class Gazonk:
 
         message += "Alla gissningar:\n"
         message += "----------------------------\n"
-        message += self.current_guesses.create_string(MAX_ENTRIES_GUESS_LIST)
+        message += self.current_guesses.create_string(MAX_ENTRIES_GUESS_LIST, "Totalt")
         return message
 
     def create_clue_string(self, disp_all):
@@ -127,6 +172,7 @@ class Gazonk:
         new = 0
         if dont_increase == 0:
             self.current_clue += 1
+            self.monthly.new_given_clue()
             self.per_clue_guesses.append( GuessDB() )
             if self.current_clue == 0:
                 new = 1
@@ -164,6 +210,9 @@ class Gazonk:
         if person == 0:
             self.last_text_no = text_no
 
+    def check_monthly(self):
+        self.monthly.check(self)
+
     def check_clues(self):
         log("Checking if we should send out clues or warnings.")
 
@@ -174,6 +223,7 @@ class Gazonk:
             self.send_next_clue_letter()
             self.set_last_action()
             self.warnings_sent = 0
+            self.monthly.new_round()
             return
 
         current_time = time.time()
@@ -224,6 +274,10 @@ class Gazonk:
             return
 
     def parse_message(self, msg, c):
+        #Om det inte är till gazonk personligen, skall vi inte svara.
+        if msg.recipient != KOMPERSON:
+            return
+
         sender_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
         log("%s: Meddelande (%d) från %s:" % (get_date_and_time(), msg.recipient, sender_name))
         log(indent(msg.message, 2) + "\n")
@@ -231,6 +285,12 @@ class Gazonk:
         # Svara ej på automatsvar.
         m = Gazonk.re_auto_reply.search(msg.message)
         if m:
+            return
+
+        # Behöver man hjälp?
+        m = Gazonk.re_hjalp.search(msg.message)
+        if m:
+            send_message(help_string, msg.sender)
             return
 
         # Saker som endast kan göras om ingen gazonk finns:
@@ -283,6 +343,7 @@ class Gazonk:
                 clue = m.group(1)
                 if len(clue) != 0:
                     self.clues.append(m.group(1))
+                    self.monthly.new_clue()
                 self.send_clue_message(msg.sender, 1)
                 return
 
@@ -366,11 +427,11 @@ class Gazonk:
                 return
 
             # Lägg till gissningen i lite gissningsdatabaser.
-            self.monthly.add_guess(guess, msg.sender)
             self.current_guesses.add(guess)
             self.per_clue_guesses[self.current_clue].add(guess)
 
             if guess == self.password:
+                self.monthly.add_guess(guess, msg.sender, 1)
                 send_message("Grattis, Du gissade rätt!\nDu är nu ny gazonk!", msg.sender)
                 gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
                 new_gaz_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
@@ -383,6 +444,7 @@ class Gazonk:
                 self.set_last_action()
                 return
             else:
+                self.monthly.add_guess(guess, msg.sender, 0)
                 send_message(random.choice(wrong_guess_list), msg.sender)
                 return
 
@@ -393,15 +455,117 @@ class Gazonk:
 class MonthlyStats:
     def __init__(self):
         self.guesses = GuessDB()
-        self.people = {}
+        self.reset()
 
     def reset(self):
         self.guesses.reset()
         self.people = {}
+        self.round_count = 0
+        self.given_clue_count = 0
+        self.clue_count = 0
+        self.disp_stat = GAZ_DISPLAY_STATISTICS
+        self.now = self.get_now_num()
 
-    def add_guess(self, guess, person):
+    def get_now_num(self):
+        if self.disp_stat == 0:
+            return -1
+        tmptime = time.localtime(time.time())
+        tmpconv = {0: -1, 1: 3, 2: 2, 3: 6, 4: 1, 5: 0}
+        return tmptime[tmpconv[self.disp_stat]]
+
+    def new_round(self):
+        self.round_count += 1
+
+    def new_given_clue(self):
+        self.given_clue_count += 1
+
+    def new_clue(self):
+        self.clue_count += 1
+
+    def add_guess(self, guess, person, win = 0):
         self.guesses.add(guess)
-        #TODO add for the person too
+        if not self.people.has_key(person):
+            self.people[person] = MonthlyPersonStats()
+        self.people[person].add_guess(guess, person, win)
+
+    def check(self, g):
+        if self.disp_stat == 0:
+            return
+        current = self.get_now_num()
+        if current != self.now:
+            # It is a new hour/day/week/month/year, so display stats.
+            mstrings = { 1: ("Den", "timme", "timmen"), \
+                         2: ("Den", "dag", "dagen"), \
+                         3: ("Den", "vecka", "veckan"), \
+                         4: ("Den", "månad", "månaden"), \
+                         5: ("Det", "år", "året") }
+            (dd, mob, mbest) = mstrings[self.disp_stat]
+
+            subject = "Statistik för den senaste %s." % mbest
+            message = "%s senaste %s har %d gazonkningar påbörjats och\n" % \
+                      (dd, mbest, self.round_count)
+            message += "det har gjorts totalt %d gissningar på sammanlagt %d givna\n" % \
+                       (self.guesses.count, self.given_clue_count)
+            message += "ledtrådar. Totalt %d ledtrådar angavs.\n\n" % self.clue_count
+
+            message += """Gissn  = antal gissningar
+Korr   = antal korrekta gissningar
+k/g    = andel korrekta gissningar (procent)
+person = för denna person
+fo     = flest gissningar på dessa ord
+
+Statistik över personer som röstat:
+-----------------------------------
+ Gissn Korr   k/g  person
+"""
+
+            plist_tmp = zip(self.people.values(), self.people.keys())
+            plist = [(value.guesses.count, key, value) for (value,key) in plist_tmp]
+            plist.sort()
+            plist.reverse()
+
+            for (guesscount, person, pstats) in plist:
+                pname = kom.ReqGetUconfStat(conn, person).response().name
+                kpg = "%3.1f%%" % (float(pstats.win_count)/float(guesscount)*100.0)
+                row = string.rjust(str(guesscount),6) + " " + \
+                      string.rjust(str(pstats.win_count),4) + " " + \
+                      string.rjust(kpg, 6) + " " + \
+                      "<Person %d: %s>" % (person, pname)
+                row = row[:72]
+
+                glist = zip(pstats.guesses.db.values(), pstats.guesses.db.keys())
+                glist.sort()
+                glist.reverse()
+                srow = "       fo"
+                c = ":"
+                for (amount, guess) in glist[:3]:
+                    srow += c + " %d %s" % (amount, guess)
+                    if c == ":":
+                        c = ","
+                message += row + "\n" + srow + "\n"
+
+            message += "\nAlla gissningar:\n"
+            message += "----------------------------\n"
+            message += self.guesses.create_string(MAX_ENTRIES_GUESS_LIST, "Totalt")
+
+            g.send_letter(subject, message, GAZONK_CONF, 1, 1)
+
+            # Now reset the stats for next period.
+            self.reset()
+
+class MonthlyPersonStats:
+    def __init__(self):
+        self.guesses = GuessDB()
+        self.win_count = 0
+
+    def reset(self):
+        self.guesses.reset()
+        self.win_count = 0
+
+    def add_guess(self, guess, person, win = 0):
+        self.guesses.add(guess)
+        if win == 1:
+            self.win_count += 1
 
 # Liten klass för att hålla reda på ord.
 class GuessDB:
@@ -420,7 +584,7 @@ class GuessDB:
         else:
             self.db[guess] += 1
 
-    def create_string(self, max_nr = MAX_ENTRIES_GUESS_LIST):
+    def create_string(self, max_nr = MAX_ENTRIES_GUESS_LIST, total_word = "Sammanlagt"):
         glist = zip(self.db.values(), self.db.keys())
         glist.sort()
         glist.reverse()
@@ -433,10 +597,10 @@ class GuessDB:
             guess_string += "Inga gissningar.\n" 
         elif self.count == 1:
             guess_string += "----------------------------\n"
-            guess_string += "Sammanlagt 1 gissning.\n"
+            guess_string += "%s 1 gissning.\n" % total_word
         else:
             guess_string += "----------------------------\n"
-            guess_string += "Sammanlagt %d gissningar.\n" % self.count
+            guess_string += "%s %d gissningar.\n" % (total_word, self.count)
         return guess_string
 
 # Loggning
@@ -471,6 +635,8 @@ def send_message(message, recipient):
 # Huvudkod
 #
 
+random.seed()
+
 # Öppna en logfil, kan vara bra att ha :-)
 logfile = open(LOGFILE, "a")
 log("Starting")
@@ -498,5 +664,5 @@ while 1:
     select.select([conn.socket], [], [], MAX_SLEEP_TIME)
     conn.parse_present_data()
     gaz.check_clues()
+    gaz.check_monthly()
     cPickle.dump(gaz, open(DUMPFILE, 'w'), DUMPBIN)
-#    gaz.set_last_action()

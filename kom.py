@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.23 2001/08/29 13:06:32 kent Exp $
+# $Id: kom.py,v 1.24 2002/03/03 20:36:11 forsberg Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -1742,9 +1742,11 @@ class WhoInfo:
 class Connection:
     # INITIALIZATION ETC.
 
-    def __init__(self, host, port = 4894, user = ""):
+    def __init__(self, host, port = 4894, user = "", localbind=None):
         # Create socket and connect
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if None != localbind:
+            self.socket.bind(localbind)
         self.socket.connect((host, port))
 
         # Requests
@@ -2040,8 +2042,8 @@ class Connection:
 #   numbers of all unread text in a conference for a person
 
 class CachedConnection(Connection):
-    def __init__(self, host, port = 4894, user = ""):
-        Connection.__init__(self, host, port, user)
+    def __init__(self, host, port = 4894, user = "", localbind=None):
+        Connection.__init__(self, host, port, user, localbind)
 
         # Caches
         self.uconferences = Cache(self.fetch_uconference, "UConference")
@@ -2196,8 +2198,8 @@ class CachedConnection(Connection):
 
 
 class CachedUserConnection(CachedConnection):
-    def __init__(self, host, port = 4894, user = ""):
-        CachedConnection.__init__(self, host, port, user)
+    def __init__(self, host, port = 4894, user = "", localbind=None):
+        CachedConnection.__init__(self, host, port, user, localbind)
 
         # User number
         self._user_no = 0

@@ -1,7 +1,8 @@
 #!/usr/bin/env python
+# -*- coding: iso-8859-1 -*-
 # Show conference activity in a tabular manner
 # (large parts ripped from komconfstats)
-# $Id: komconfactivity,v 1.4 2002/12/15 12:13:36 kent Exp $
+# $Id: komconfactivity,v 1.5 2004/01/29 17:08:56 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 
 # Need a modern Python (2.2 will do)
@@ -18,7 +19,7 @@ import cStringIO
 import jddate # From the lyspython collection
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.4 $"
+vc_revision = "$Revision: 1.5 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -72,7 +73,8 @@ class ConfActivity(komconfwalker.ConfTemporalWalker):
                  post_to_conference = 0,
                  exclude_self = 0,
                  debug = 0,
-                 average_age = 0):
+                 average_age = 0,
+                 show_numbers = 0):
         komconfwalker.ConfTemporalWalker.__init__(self, conn,
                                                   person, conference, period,
                                                   mark_earlier, mark_processed,
@@ -81,7 +83,8 @@ class ConfActivity(komconfwalker.ConfTemporalWalker):
         self.post_to_conference = post_to_conference
         self.exclude_self = exclude_self
         self.average_age = average_age
-
+        self.show_numbers = show_numbers
+        
         # We need to count articles per author, day and hour (the purpose of this hack!)
         self.count = {} # indexed by person number, date, hour (0..23)
 
@@ -201,10 +204,13 @@ class ConfActivity(komconfwalker.ConfTemporalWalker):
         #c.write("\n   " + " ".join([tag_dict[a] for a in authors]) + "\n\n")
         c.write("\n")
         if self.average_age:
-            c.write("Talet är medelvärdet av timmar mellan kommenter och det kommenterade.\n")
+            c.write("Talet är medelvärdet av timmar mellan kommentarer och det kommenterade.\n")
         else:
-            c.write("Signatur visas under en timme då personen skrivit inlägg.\n")
-            c.write("Stora bokstäver betyder femton eller fler inlägg.\n")
+            if self.show_numbers:
+                c.write("Antal skrivna inlägg visas under en timme då personen skrivit inlägg.\n")
+            else:
+                c.write("Signatur visas under en timme då personen skrivit inlägg.\n")
+                c.write("Stora bokstäver betyder femton eller fler inlägg.\n")
         
         # Loop over the dates
         d_first = jddate.FromString(self.first[0])
@@ -219,10 +225,13 @@ class ConfActivity(komconfwalker.ConfTemporalWalker):
             wd_prefix = ["Mån","Tis","Ons","Tors","Fre","Lör","Sön"][wdd-1]
             c.write("\n%sdag %s:\n" % (wd_prefix, date))
 
-            if self.average_age:
+            if self.average_age or self.show_numbers:
                 c.write("  ")
                 for a in authors:
-                    c.write("%5s" % tag_dict[a])
+                    if self.average_age:
+                        c.write("%5s" % tag_dict[a])
+                    else:
+                        c.write("%3s" % tag_dict[a])
                 c.write("\n")
                 
             # Loop over the hours
@@ -245,12 +254,18 @@ class ConfActivity(komconfwalker.ConfTemporalWalker):
                             txt = "%4.1f" % avage
                     else:
                         count = self.count.get((a, date, h), 0)
-                        if count >= 15:
-                            txt = tag_dict[a].upper()
-                        elif count > 0:
-                            txt = tag_dict[a]
+                        if self.show_numbers:
+                            if count > 0:
+                                txt = "%2d" % count
+                            else:
+                                txt = "__"
                         else:
-                            txt = "__"
+                            if count >= 15:
+                                txt = tag_dict[a].upper()
+                            elif count > 0:
+                                txt = tag_dict[a]
+                            else:
+                                txt = "__"
 
                     c.write(txt + " ")
                 
@@ -313,6 +328,7 @@ post_to_conference = 0
 exclude_self = 0
 debug = 0
 average_age = 0
+show_numbers = 0
 
 options, arguments = getopt.getopt(param.get_arguments(),
                                    "",
@@ -332,6 +348,7 @@ options, arguments = getopt.getopt(param.get_arguments(),
                                     "exclude-self",
                                     "debug",
                                     "average-age",
+                                    "show-numbers",
                                     ])
 
 for (opt, optarg) in options:
@@ -371,6 +388,8 @@ for (opt, optarg) in options:
         debug = 1
     elif opt == "--average-age":
         average_age = 1
+    elif opt == "--show-numbers":
+        show_numbers = 1
 
     else:
         error("Option %s not handled (internal error)" % opt, exit_now = 1)
@@ -385,7 +404,8 @@ cstats = ConfActivity(conn,
                       post_to_conference = post_to_conference,
                       exclude_self = exclude_self,
                       debug = debug,
-                      average_age = average_age)
+                      average_age = average_age,
+                      show_numbers = show_numbers)
 
 cstats.gather()
 cstats.report()

@@ -53,7 +53,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.1 2004/11/29 08:38:55 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.2 2004/11/30 10:35:21 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -152,7 +152,9 @@ def parse_configmessage(text, report=0):
     conf = {'aliases':[],
             'ignore':[],
             'ignore_presence':[],
-            'sendpresence':[]}
+            'sendpresence':[],
+            'startup_show':'',
+            'startup_status':''}
     
     if -1 != tl[0].lower().find("jabberconfig"): # Configuration letter
         for p in tl:
@@ -161,7 +163,8 @@ def parse_configmessage(text, report=0):
 
                 for q in ('server','userid','password','alias','resource',
                           'port','skip_resources''ignore','ignore_presence',
-                          'sendpresence'):
+                          'sendpresence','startup_show','startup_status',
+                          'divert_incoming_to'):
                     l = filter(None, p.lower().split())
                     if l and l[0] == q:
                         if q == 'alias':
@@ -275,6 +278,9 @@ class person:
         self.mutex = mutex.mutex()
         self.conf = conf
         
+        if conf.has_key('divert_incoming_to'):
+            self.me = int(conf['divert_incoming_to'])
+
         self.jabber = jabber.Client(conf['server'], conf['port'])
         self.jabber.connect()
         
@@ -284,7 +290,8 @@ class person:
 
         self.jabber.setDisconnectHandler(self.disconnected)
         self.jabber.auth( conf['userid'], conf['password'], conf['resource'])
-        self.jabber.sendInitPresence()
+        self.jabber.sendPresence(status=conf['startup_status'], show=conf['startup_show'])
+
         self.alive = 1
 
         log( "%s/%s (person %d) logged in to %s:%s." % (conf['userid'], conf['resource'], person_no,
@@ -457,7 +464,7 @@ class person:
                 sendmsg = 1
                 msg = u"Meddelande från %s: %s" % (
                     utf8_d(self.msg_sender(m.getFrom())),
-                    utf8_d(self.msg_sender(m.getBody())))
+                    utf8_d(m.getBody()))
 
             elif m.getType() == 'error':
                 sendmsg = 1
@@ -471,7 +478,8 @@ class person:
                 if m.getSubject():
                     msg = u"%s\n%s" % (m.getSubject(), m.getBody())
                 else:
-                    msg = u"Meddelande från %s\n%s" % (m.getFrom(), m.getBody())
+                    msg = u"Meddelande från %s\n%s" % (self.msg_sender(m.getFrom()),
+                                                       m.getBody())
 
                 mi = kom.CookedMiscInfo()
                 mi.recipient_list.append(kom.MIRecipient( kom.MIR_TO, self.me ))
@@ -726,8 +734,10 @@ def async_new_text( m, conn ):
 
     for p in ts.misc_info.recipient_list:
         if p.recpt == daemon_person: # We are members of no other confs
-            kom.ReqMarkAsRead( conn, daemon_person, [p.loc_no] ).response()
-
+            try:
+                kom.ReqMarkAsRead( conn, daemon_person, [p.loc_no] ).response()
+            except:
+                pass
 
     if ts.author == daemon_person: # Ignore what we wrote
         return
@@ -753,15 +763,27 @@ def async_new_text( m, conn ):
         unlock(threaddict_m)
 
         to = ""
-        
-        for p in ts.misc_info.comment_to_list:
-            try:
-                if conn.textstats[p.text_no].author == daemon_person:
-                    for q in conn.textstats[p.text_no].aux_items:
-                        if q.tag == kom.AI_MX_FROM:
-                            to = q.data
-            except kom.NoSuchText:
-                pass
+        thread = ""
+
+        # Look in message first
+        for q in ts.aux_items:
+            if q.tag == kom.AI_MX_TO:
+                to = q.data
+            elif q.tag == kom.AI_MX_MESSAGE_ID:
+                thread = q.data[1:-1]
+
+        # Check comments if we found nothing.
+        if not to:
+            for p in ts.misc_info.comment_to_list:
+                try:
+                    if conn.textstats[p.text_no].author == daemon_person:
+                        for q in conn.textstats[p.text_no].aux_items:
+                            if q.tag == kom.AI_MX_FROM:
+                                to = q.data
+                            elif q.tag == kom.AI_MX_MESSAGE_ID:
+                                thread = q.data[1:-1]
+                except kom.NoSuchText:
+                    pass
             
         if not to: # Don't know who to send to?
             return 
@@ -785,7 +807,7 @@ def async_new_text( m, conn ):
             text = l1_d( msg.message.strip() )
 
         tl = text.split("\n")        
-        pers.send_message(to,"\n".join(tl[1:]),type='',subject=tl[0])
+        pers.send_message(to,"\n".join(tl[1:]),type='',subject=tl[0],thread=thread)
 
         ai1 = kom.AuxItem(kom.AI_MX_TO)
         ai1.data = to

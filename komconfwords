@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some word statistics about a conference
-# $Id: komconfwords,v 1.15 2001/10/02 09:00:56 kent Exp $
+# $Id: komconfwords,v 1.16 2002/05/06 17:09:07 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -25,7 +25,7 @@ import whrandom
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.15 $"
+vc_revision = "$Revision: 1.16 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -133,6 +133,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
         self.no_of_old_words = 0
 
         self.new_words_author = {}
+        self.new_words_article = {}
         self.author_count = {}
         
     def walk(self):
@@ -172,6 +173,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
                     # A brave new word
                     self.new_words[word] = 1
                     self.new_words_author[word] = ts.author
+                    self.new_words_article[word] = global_no
 
     def report(self):
         # Report on everything
@@ -180,7 +182,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
         
         if self.no_of_new_words == 0:
             title = "Ingen ordrapport för %s" % conf_name
-            self.write_article(title, "Inga inlägg funna.\n")
+            self.write_article(title, "Inga inlägg funna. Ni är patetiska!\n")
             return
 
         r.write("Först inlägg: %19s\n" % \
@@ -227,7 +229,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
 
         if unique_new >0:
             author_word_count = {}
-            r.write(" Pos Antal  Nytt ord                            Först använt av\n")
+            r.write(" Pos Antal  Nytt ord                            Först använt av/i\n")
             r.write("-"*73 + "\n")
     
             sortlist = map(lambda x: (-x[1], whrandom.randint(1,1000), x[0]), self.new_words.items())
@@ -238,6 +240,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
                 occ = - occ
     
                 first_author = self.new_words_author[word]
+                first_article = self.new_words_article[word]
                 author_word_count[first_author] = author_word_count.get(first_author, 0) + 1
                 first_author_name = self.conn.conf_name(first_author)
 
@@ -249,6 +252,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
                     pos_str = '"'
 
                 r.write("%4s) %4d  %-35s %-25s\n" % (pos_str, occ, word, first_author_name[:25]))
+                r.write("                                                %d\n" % first_article)
                 pos = pos + 1
                 last_occ = occ
     

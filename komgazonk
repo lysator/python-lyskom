@@ -170,6 +170,8 @@ class Gazonk:
 
     def set_last_action(self):
         self.time_last_action = time.time()
+        if self.is_night:
+            self.night_started = self.time_last_action
 
     def set_current_time(self):
         ct = time.time()
@@ -181,8 +183,8 @@ class Gazonk:
             else:
                 # Natten slutar nu.
                 # Gör om det till hela timmar.
-                night_hours = round(self.night_started/3600.0)*3600.0
-                gaz.time_last_action += ct - night_hours
+                start_of_hour = round(ct/3600.0)*3600.0
+                gaz.time_last_action += start_of_hour - self.night_started
                 self.night_started = -1
             self.is_night = now_is_night
         self.current_time = time.time()

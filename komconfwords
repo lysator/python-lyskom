@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some word statistics about a conference
-# $Id: komconfwords,v 1.8 2001/04/08 12:50:05 kent Exp $
+# $Id: komconfwords,v 1.9 2001/04/17 17:17:11 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -25,7 +25,7 @@ import whrandom
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.8 $"
+vc_revision = "$Revision: 1.9 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -77,6 +77,20 @@ def safe_div(format, p, q, percent = 0):
         return ""
     else:
         return format % (float(p)/q)
+
+# Random sentences
+def randsent(words, min_words=3, max_words=7, max_chars = None):
+    sentlist = []
+    for j in range(0,10):
+        for i in range(0,whrandom.randint(min_words,max_words)):
+            sentlist.append(whrandom.choice(words))
+            sentence = string.capitalize(string.join(sentlist, " ") + ".")
+        if max_words is None or len(sentence) <= max_chars:
+            break
+    if max_chars is not None:
+        sentence = sentence[:max_chars]
+    return sentence
+            
 
 #
 # CONFWORDS CLASS
@@ -233,18 +247,16 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
             r.write("Dagens utvalda nya ord är: %s\n" % wot)
             r.write("\n")
                     
-            sot = []
-            for i in range(0,whrandom.randint(3,7)):
-                sot.append(whrandom.choice(self.new_words.keys()))
-            sot = string.capitalize(string.join(sot, " ") + ".")
+            paren = randsent(self.new_words.keys(), min_words=3, max_words=4, max_chars = 54)
+            r.write("Dagens utvalda nya parentes är: (%s)\n" % paren)
+            r.write("\n")
+
+            sot = randsent(self.new_words.keys(), min_words=3, max_words=7)
             r.write("Dagens utvalda nya mening är: %s\n" % sot)
             r.write("\n")
                
         if len(self.words) > 0:
-            sot = []
-            for i in range(0,whrandom.randint(3,7)):
-                sot.append(whrandom.choice(self.words.keys()))
-            sot = string.capitalize(string.join(sot, " ") + ".")
+            sot = randsent(self.words.keys(), min_words=3, max_words=7)
             r.write("Dagens utvalda mening med både gamla och nya ord är: %s\n" % sot)
             r.write("\n")
                            

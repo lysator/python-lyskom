@@ -79,7 +79,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.10 2004/12/15 07:15:59 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.11 2005/01/12 09:19:50 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -198,6 +198,8 @@ def parse_configmessage(text, report=0, textno=0):
             'ignore_presence':[],
             'sendpresence':[],
             'startup_show':'',
+            'auto_away':0,
+            'auto_back':0,
             'startup_status':'',
             'def_recpt_time':'30',
             'config_source':textno}
@@ -208,6 +210,7 @@ def parse_configmessage(text, report=0, textno=0):
 
             for q in ('server','userid','password','alias','resource',
                       'port','skip_resources','ignore','ignore_presence',
+                      'auto_way','auto_back',
                       'sendpresence','startup_show','startup_status', 'messages_only',
                       'divert_incoming_to','def_recpt_time'):
                 l = filter(None, p.split())
@@ -346,8 +349,8 @@ class person:
         self.rosterjidcache = {}
 
         for p in self.roster.getJIDs():
-            c = str(self.roster.getName(p))
-            if c:
+            if self.roster.getName(p):
+                c = str(self.roster.getName(p))
                 self.rosterjidcache[str(p).upper()] = c
                 self.rosteraliascache[c.upper()] = str(p)
                 
@@ -386,13 +389,32 @@ class person:
         lock(self.mutex)
         c = self.conf
         dst = self.me
+        aliasinfo = ''
         debuginfo = ''
+
+        jidlist = self.rosterjidcache.keys() + self.jidcache.keys()
+
+
+        def uniq(x,y):
+            if not y in x:
+                x.append(y)
+            return x
+
+        for p in reduce( uniq, jidlist, [] ):
+            name = self.uid_to_alias( p )
+            jid = self.rosteraliascache[name.upper()]
+            
+            aliasinfo = aliasinfo + u'Alias \'%s\' går till %s.\n' % (name,
+                                                                  jid)
+            
         unlock(self.mutex)
         
         lock(komsendq_m)
         komsendq.put( kommessage( dst, l1_e(
-            u"Aktuell konfiguration som används: %s Debuginformation: %s." %
-            (repr(c), debuginfo))))
+            u"Aktuell konfiguration som används: %s\n\n"
+            u"Aktuella alias:\n%s\n"
+            u"Debuginformation: %s" %
+            (repr(c), aliasinfo, debuginfo))))
         unlock(komsendq_m)
 
 
@@ -737,7 +759,8 @@ class person:
             
             showtext = u""
             if m.getShow():
-                showd = {'away':u' men borta just nu',
+                showd = {'online':u' och tillgänglig',
+                         'away':u' men borta just nu',
                          'chat':u' och pratig',
                          'dnd':u' men vill inte bli störd',
                          'xa':u' men är borta ett tag framåt.'}
@@ -752,6 +775,12 @@ class person:
                 msg = u"%s är inloggad%s%s." % (self.msg_sender(m.getFrom()),
                                                   showtext,
                                                   stattext)                
+            elif m.getType() == 'subscribe':
+                msg = u"%s vill prenumera på din närvarostatus, skicka kommandot /godkänn %s för att tillåta detta." % (
+                    m.getFrom(),
+                    m.getFrom().getStripped())
+                    
+                
             else:
                 msg = u"%s har konstig typ (%s) eller status (%s) (rått: %s)" % (
                     m.getFrom().getStripped(),
@@ -857,6 +886,10 @@ class person:
 
 
         
+def auth_handler( msg, conn, p, pers_no=0 ):
+    p.send_presence(type='subscribed',to=msg)
+    return 1
+        
 def away_handler( msg, conn, p, pers_no=0 ):
     p.send_presence('away',msg)
     return 1
@@ -952,7 +985,9 @@ msg_handlers={'xa':xa_handler,
               'direct':direct_handler,
               'config':config_handler,
               'konfiguration':config_handler,
-              'status':status_handler
+              'status':status_handler,
+              'authorize':auth_handler,
+              'godkänn':auth_handler
               }
 
 def async_message( msg, conn ):
@@ -1186,6 +1221,17 @@ def notice_person( pers, pers_no, conn, oncache=None ):
     unlock(sessdict_m)
 
 
+def handle_auto_stuff():
+    # conn_m should be acquired
+
+    lock(threaddict_m)
+    users = threaddict.keys()
+    unlock(threaddict_m)
+
+    d = kom.ReqWhoIsOnDynamic(conn).response()
+    sess = filter( lambda x: x.person in users and
+                   x.flags.user_active_used, d)
+
 
 
 log( "Canidius started" )
@@ -1244,10 +1290,16 @@ for p in persons:
 unlock(conn_m)
 
 
+autohandlertime = 0
+
 while 1:
 
     lock(conn_m)
     conn.parse_present_data()
+
+    if time.time() - autohandlertime > 30:
+        handle_auto_stuff()
+        autohandlertime = time.time()
 
     lock(komsendq_m)                
     try:

@@ -2,7 +2,7 @@
 # -*- python -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.32 2002/05/30 18:42:29 kent Exp $
+# $Id: komimportmail,v 1.33 2002/11/10 17:46:40 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -24,7 +24,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.32 $"
+vc_revision = "$Revision: 1.33 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -234,6 +234,12 @@ def create_article_or_add_recipients(mail,
     recipient_list = name_list_to_conf_no_list(envelope_recipients)
     if len(recipient_list) == 0:
         error_exit("No valid recipients found", EX_NOUSER)
+
+    # Remove recipients based on mx-refuse-import
+    recipient_list = filter_mx_refuse_import(recipient_list, mail)
+    if len(recipient_list) == 0:
+        log("No recipients left after mx-refuse-import handling", LOG_INFO)
+        return
 
     # Choose function
     if existing_text_no is None:
@@ -764,6 +770,49 @@ def only_mime_headers(headers):
         if re_good_mime_header.match(header):
             ok_headers.append(header)
     return ok_headers
+
+#
+# Filter recpient list to respect mx-refuse-import
+#
+
+def filter_mx_refuse_import(recipient_list, mail):
+    ok_to_import_to = []
+    for conf_no in recipient_list:
+        try:
+            conf = c.conferences[conf_no]
+        except kom.ServerError:
+            log("Cannot get information about conf_no %d" % conf_no,
+                LOG_WARNING)
+            ok_to_import_to.append(conf_no) # Play it safe...
+            continue
+
+        if filter_conference(conf, mail):
+            ok_to_import_to.append(conf_no)
+
+    return ok_to_import_to
+
+def filter_conference(conf, mail):
+    for mxri in kom.all_aux_items_with_tag(conf.aux_items,
+                                           kom.AI_MX_REFUSE_IMPORT):
+        if mxri.data == "all":
+            log("Unconditional mx-refuse_import on conference '%s'" % \
+                (conf.name),
+                LOG_DEBUG)
+            return 0
+        if mxri.data == "spam":
+            # Check for X-Spam-Flag from SpamAssassin:
+            x_spam_flag = mail.headers.get("X-Spam-Flag", "NO")
+            if x_spam_flag == "YES":
+                log("Spam mx-refuse_import on conference '%s'" % \
+                    (conf.name),
+                    LOG_DEBUG)
+                return 0
+        else:
+            log("Unknown mx-refuse_import '%s' on conference '%s'" % \
+                (mxri.data, conf.name),
+                LOG_WARNING)
+
+    return 1
 
 # MAIN
 

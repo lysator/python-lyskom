@@ -13,20 +13,26 @@ import os.path
 import re
 from komgazonk_config import *
 import cPickle
+import random
 
 CLIENTNAME="komgazonk"
 VERSION="0.1.0"
 
 INVISIBLE = 1
 
-MAX_ENTRIES_GUESS_LIST = 10
+MAX_ENTRIES_GUESS_LIST = 200
 
+wrong_guess_list = ["Fel, fel, fel, fel!", \
+                    "Trodde du verkligen att det skulle vara rätt?", \
+                    "Om du läser ledtrådarna först går det nog bättre.", \
+                    "En daggmask hade kommit på något bättre än det där."]
 class Gazonk:
     re_auto_reply = re.compile("^Auto-reply:", re.IGNORECASE)
     re_ny_gazonk = re.compile("^ny gazonk", re.IGNORECASE)
     re_losenord_a = re.compile("^lösenord", re.IGNORECASE)
-    re_losenord_b = re.compile("^[Ll][Öö][Ss][Ee][Nn][Oo][Rr][Dd] *([ " + GAZ_PW_CHARS + \
+    re_losenord_b = re.compile("^[Ll][Öö][Ss][Ee][Nn][Oo][Rr][Dd] *([" + GAZ_PW_CHARS + \
                                "]{1," + str(GAZ_PW_LENGTH) + "}) *$")
+    re_gissning = re.compile("^[" + GAZ_PW_CHARS + "]{1," + str(GAZ_PW_LENGTH) + "}$")
     re_ledtrad = re.compile("^ledtråd *(.*) *$", re.IGNORECASE)
     re_byt_ledtrad = re.compile("^byt ledtråd *([0-9]+) *(.*) *$", re.IGNORECASE)
     re_gissa = re.compile("^gissa *(.*) *$")
@@ -35,8 +41,10 @@ class Gazonk:
     re_nasta = re.compile("^nästa", re.IGNORECASE)
 
     def __init__(self):
+        self.monthly = MonthlyStats()
+        self.current_guesses = GuessDB()
         self.reset()
-        self.all_guesses = {}
+        self.monthly.reset()
 
     def reset(self):
         self.person_no = -1
@@ -46,7 +54,11 @@ class Gazonk:
         self.time_last_action = -1
         self.warnings_sent = 0
         self.last_text_no = -1
-        self.current_guesses = {}
+        self.current_guesses.reset()
+        self.per_clue_guesses = []
+
+    def monthly_reset(self):
+        self.all_guesses.reset()
 
     def set_last_action(self):
         self.time_last_action = time.time()
@@ -62,20 +74,22 @@ class Gazonk:
         print "Time for last action: " + str(self.time_last_action)
         print "Num warnings sent: %d" % self.warnings_sent
 
-    def create_guess_list_string(self, max_nr = MAX_ENTRIES_GUESS_LIST, current = 1):
-        guess_list = []
-        if current == 1:
-            guess_list = zip(self.current_guesses.values(), self.current_guesses.keys())
-        else:
-            guess_list = zip(self.all_guesses.values(), self.all_guesses.keys())
-        guess_list.sort()
-        guess_list.reverse()
+    def create_guess_list_string(self, max_nr = MAX_ENTRIES_GUESS_LIST):
+        message = ""
+        i = 0
+        for gdb in self.per_clue_guesses:
+            i += 1
+            message += "Gissningar för ledtråd %d:\n" % i
+            message += "----------------------------\n"
+            message += "%d. %s" % (i, self.clues[i-1])
+            message += "\n----------------------------\n"
+            message += gdb.create_string(MAX_ENTRIES_GUESS_LIST)
+            message += "\n"
 
-        guess_string = ""
-        for (amount, guess) in guess_list[:max_nr]:
-            guess_string += string.ljust(guess + ":", min(GAZ_PW_LENGTH + 10, 60)) + \
-                            " " + str(amount) + "\n"
-        return guess_string
+        message += "Alla gissningar:\n"
+        message += "----------------------------\n"
+        message += self.current_guesses.create_string(MAX_ENTRIES_GUESS_LIST)
+        return message
 
     def create_clue_string(self, disp_all):
         clues = self.clues
@@ -83,29 +97,37 @@ class Gazonk:
             if self.current_clue == -1:
                 return "Inga ledtrådar att visa\n"
             clues = clues[:(self.current_clue+1)]
+        elif disp_all == 2:
+            if self.current_clue == -1:
+                return "Inga ledtrådar att visa\n"
+            clues = clues[(self.current_clue+1):]
 
         if len(clues) == 0:
             return "Inga ledtrådar att visa\n"
 
         clue_string = ""
         i = 0
+        if disp_all == 2:
+            i = self.current_clue+1
         for c in clues:
             i += 1
             clue_string += str(i) + ". " + c + "\n"
         return clue_string
 
-    def create_end_of_round_message(self):
-        mess_text = "Lösenordet var '%s'.\n\n" % self.password
-        mess_text += "Alla ledtrådar (givna och icke givna):\n"
-        mess_text += self.create_clue_string(1)
-        mess_text += "\n\nTop %d gissningar:\n" % MAX_ENTRIES_GUESS_LIST
-        mess_text += self.create_guess_list_string(MAX_ENTRIES_GUESS_LIST)
-        return mess_text
+    def send_end_of_round_message(self, subject, message):
+        message += "\n\nLösenordet var '%s'.\n\n" % self.password
+        message += "Givna ledtrådar:\n"
+        message += self.create_clue_string(0)
+        message += "\nIcke givna ledtrådar:\n"
+        message += self.create_clue_string(2) + "\n"
+        message += self.create_guess_list_string(MAX_ENTRIES_GUESS_LIST)
+        self.send_letter(subject, message, GAZONK_CONF, 0, 0)
 
     def send_next_clue_letter(self, dont_increase = 0):
         new = 0
         if dont_increase == 0:
             self.current_clue += 1
+            self.per_clue_guesses.append( GuessDB() )
             if self.current_clue == 0:
                 new = 1
 
@@ -180,14 +202,13 @@ class Gazonk:
                                  "Du har inte lyssnat på varningarna och blir därmed \n" + \
                                  "fråntagen din gazonktitel!",
                                  self.person_no, 1, 1)
+                subject = "<Person %d: %s> ej längre gazonk!" % (self.person_no, gaz_name)
                 message = "Vem som helst kan nu bli gazonk. Skicka bara 'ny gazonk'" + \
                           "\ni ett meddelande till <Person %d: %s>" % (KOMPERSON, my_name)
                 if len(self.password) > 0 and len(self.clues) > 0:
-                    message += "\n\n" + self.create_end_of_round_message()
-
-                self.send_letter("<Person %d: %s> ej längre gazonk!" % \
-                                 (self.person_no, gaz_name),
-                                 message, GAZONK_CONF, 0, 0)
+                    self.send_end_of_round_message(subject, message)
+                else:
+                    self.send_letter(subject, message, GAZONK_CONF, 0, 0)
                 self.reset()
                 return
 
@@ -248,7 +269,8 @@ class Gazonk:
             elif ma:
                 send_message("Ditt lösenord godkändes ej.\n\n" + \
                              "Ett lösenord skall enbart innehålla bokstäverna\n" + \
-                             "a-z, å, ä, ö, samt vara mellan 1 och 12 bokstäver långt.", \
+                             "a-z, å, ä, ö, samt vara mellan 1 och %d bokstäver långt." % \
+                             GAZ_PW_LENGTH, \
                              msg.sender)
                 return
 
@@ -334,38 +356,88 @@ class Gazonk:
             if m:
                 guess = m.group(1)
 
-            # Lägg till gissningen i den totala gissningsdatabasen.
-            if not self.all_guesses.has_key(guess):
-                self.all_guesses[guess] = 1
-            else:
-                self.all_guesses[guess] += 1
+            gm = Gazonk.re_gissning.search(guess)
+            if not gm:
+                send_message("Din gissning godkändes ej.\n\n" + \
+                             "Ett lösenord innehåller enbart bokstäverna\n" + \
+                             "a-z, å, ä, ö, samt är mellan 1 och %d bokstäver långt." % \
+                             GAZ_PW_LENGTH, \
+                             msg.sender)
+                return
 
-            # Lägg till gissningen i gissningsdatabasen för den nuvarande omgången.
-            if not self.current_guesses.has_key(guess):
-                self.current_guesses[guess] = 1
-            else:
-                self.current_guesses[guess] += 1
+            # Lägg till gissningen i lite gissningsdatabaser.
+            self.monthly.add_guess(guess, msg.sender)
+            self.current_guesses.add(guess)
+            self.per_clue_guesses[self.current_clue].add(guess)
 
             if guess == self.password:
                 send_message("Grattis, Du gissade rätt!\nDu är nu ny gazonk!", msg.sender)
                 gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
                 new_gaz_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
                 mess_subject = "<Person %d: %s> gazonkar" % (self.person_no, gaz_name)
-                mess_text = "<Person %d: %s> klarade lösenordet och är ny gazonk!\n\n" % \
+                mess_text = "<Person %d: %s> klarade lösenordet och är ny gazonk!" % \
                             (msg.sender, new_gaz_name)
-                mess_text += self.create_end_of_round_message()
-                self.send_letter(mess_subject, mess_text, GAZONK_CONF, 0, 0)
+                self.send_end_of_round_message(mess_subject, mess_text)
                 self.reset()
                 self.person_no = msg.sender
                 self.set_last_action()
                 return
             else:
-                send_message("Fel, fel, fel, fel!", msg.sender)
+                send_message(random.choice(wrong_guess_list), msg.sender)
                 return
 
         # Detta kommando var inte begripligt
         send_message("Jag begriper inte vad du vill göra!", msg.sender)
         return
+
+class MonthlyStats:
+    def __init__(self):
+        self.guesses = GuessDB()
+        self.people = {}
+
+    def reset(self):
+        self.guesses.reset()
+        self.people = {}
+
+    def add_guess(self, guess, person):
+        self.guesses.add(guess)
+        #TODO add for the person too
+
+# Liten klass för att hålla reda på ord.
+class GuessDB:
+    def __init__(self):
+        self.db = {}
+        self.count = 0
+
+    def reset(self):
+        self.db = {}
+        self.count = 0
+
+    def add(self, guess):
+        self.count += 1
+        if not self.db.has_key(guess):
+            self.db[guess] = 1
+        else:
+            self.db[guess] += 1
+
+    def create_string(self, max_nr = MAX_ENTRIES_GUESS_LIST):
+        glist = zip(self.db.values(), self.db.keys())
+        glist.sort()
+        glist.reverse()
+
+        guess_string = ""
+        for (amount, guess) in glist[:max_nr]:
+            guess_string += string.ljust(guess, min(GAZ_PW_LENGTH + 9, 60)) + \
+                            " " + string.rjust(str(amount), 5) + "\n"
+        if self.count == 0:
+            guess_string += "Inga gissningar.\n" 
+        elif self.count == 1:
+            guess_string += "----------------------------\n"
+            guess_string += "Sammanlagt 1 gissning.\n"
+        else:
+            guess_string += "----------------------------\n"
+            guess_string += "Sammanlagt %d gissningar.\n" % self.count
+        return guess_string
 
 # Loggning
 def log(txt):
@@ -406,8 +478,6 @@ log("Starting")
 # Skapa en gazonk-information
 if os.path.exists(DUMPFILE):
     gaz = cPickle.load(open(DUMPFILE))
-    gaz.all_guesses = getattr(gaz, 'all_guesses', {})
-    gaz.current_guesses = getattr(gaz, 'current_guesses', {})
 else:
     gaz = Gazonk();
 

@@ -9,7 +9,7 @@ import komparam
 import sys
 import getopt
 
-__version__ = "$Revision: 1.3 $"
+__version__ = "$Revision: 1.4 $"
 
 def calculate(conn, starttext, endtext, toplen):
     forbidden = 0
@@ -91,7 +91,7 @@ if '__main__' == __name__:
                 lasttext = int(f.readline())
                 f.close()
             except IOError:
-                print "Couldn't open %s for reading" optarg
+                print "Couldn't open %s for reading" % optarg
                 sys.exit(1)
         elif '--lasttextoutfile' == opt:
             lasttextoutfile = optarg

@@ -1031,7 +1031,7 @@ while 1:
     select.select([conn.socket], [], [], msleep)
     msleep = MAX_SLEEP_TIME
     ct = time.time()
-    is_night = GAZ_SLEEP_HOURS.count(time.localtime(ct).tm_hour) > 0:
+    is_night = GAZ_SLEEP_HOURS.count(time.localtime(ct).tm_hour) > 0
     if gaz.current_time >= 0.0 and is_night:
         gaz.time_last_action += ct - gaz.current_time
     gaz.set_current_time()

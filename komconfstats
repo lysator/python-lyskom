@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.16 2002/02/01 12:54:57 _cvs_petli Exp $
+# $Id: komconfstats,v 1.17 2002/08/01 16:39:59 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import jddate # From the lyspython collection
 import tabulator
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.16 $"
+vc_revision = "$Revision: 1.17 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -190,9 +190,13 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.exclude_self = exclude_self
 
         self.reports = [] # The reports to produce, in order
+        self.suppressed_reports = [] # The reports not to produce, in order
         
-    def add_report(self, tabulator):
-        self.reports.append(tabulator)
+    def add_report(self, tabulator, suppress = 0):
+        if not suppress:
+            self.reports.append(tabulator)
+        else:
+            self.suppressed_reports.append(tabulator)
         
     def gather(self):
 
@@ -207,7 +211,8 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub.what = "ärenderad"
         sub.max_displayed = 10
         self.add_report(tabulator.Report(self.at, 1))
-        self.add_report(self.at)
+        # 2002-08-01: Not interesting enough
+        self.add_report(self.at, suppress = 1)
         
         self.st = tabulator.Tabulator()
         self.st.prop.title = "Inlägg"
@@ -259,6 +264,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         # self.add_report(tabulator.Report(self.mat, levels = 2))
         self.add_report(self.mat)
       
+        # 2002-08-01: Not interesting enough
         self.rmat = ConfNameTabulator()
         self.rmat.prop.title = "Kommentarer till texter i andra möten"
         self.rmat.prop.singularis = "inlägg"
@@ -267,8 +273,9 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub.what = "författare"
         sub = sub.add_sub(tabulator.Tabulator)
         sub.what = "ärenderad"
-        self.add_report(self.rmat)
+        self.add_report(self.rmat, suppress = 1)
       
+        #2002-08-01: Not interesting enough
         self.crt = ConfNameTabulator()
         self.crt.prop.title = "Inlägg i andra möten också"
         self.crt.prop.singularis = "inlägg"
@@ -278,8 +285,9 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub = sub.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
-        self.add_report(self.crt)
+        self.add_report(self.crt, suppress = 1)
 
+        # 2002-08-01: Not interesting enough
         self.rcrt = tabulator.Tabulator()
         self.rcrt.prop.title = "Inlägg i andra möten också"
         self.rcrt.prop.singularis = "inlägg"
@@ -289,8 +297,9 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub = sub.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
-        self.add_report(self.rcrt)
+        self.add_report(self.rcrt, suppress = 1)
 
+        # 2002-08-01: Not interesting enough
         self.prt = ConfNameTabulator()
         self.prt.prop.title = "Inlägg mottagna av personer"
         self.prt.prop.singularis = "inlägg"
@@ -301,8 +310,9 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub = sub.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
-        self.add_report(self.prt)
+        self.add_report(self.prt, suppress = 1)
 
+        # 2002-08-01: Not interesting enough
         self.rprt = tabulator.Tabulator()
         self.rprt.prop.title = "Inlägg mottagna av personer"
         self.rprt.prop.singularis = "inlägg"
@@ -312,7 +322,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub = sub.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
-        self.add_report(self.rprt)
+        self.add_report(self.rprt, suppress = 1)
 
         self.fnat = ConfNameTabulator()
         self.fnat.prop.title = "Fotnoter"
@@ -331,50 +341,51 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.cat0.prop.singularis = "inlägg"
         self.cat0.prop.what = "författare"
         self.add_report(self.cat0)
-        self.add_report(tabulator.Report(self.cat0, relative = 1))
+        self.add_report(tabulator.Report(self.cat0, relative = 1, min_total_count = 10))
       
         self.cat1 = ConfNameTabulator()
         self.cat1.prop.title = "Inlägg med minst 1 kommentar"
         self.cat1.prop.singularis = "inlägg"
         self.cat1.prop.what = "författare"
         self.add_report(self.cat1)
-        self.add_report(tabulator.Report(self.cat1, relative = 1))
+        self.add_report(tabulator.Report(self.cat1, relative = 1, min_total_count = 10))
 
         self.cat2 = ConfNameTabulator()
         self.cat2.prop.title = "Inlägg med minst 2 kommentarer"
         self.cat2.prop.singularis = "inlägg"
         self.cat2.prop.what = "författare"
         self.add_report(self.cat2)
-        self.add_report(tabulator.Report(self.cat2, relative = 1))
+        self.add_report(tabulator.Report(self.cat2, relative = 1, min_total_count = 10))
 
         self.cat3 = ConfNameTabulator()
         self.cat3.prop.title = "Inlägg med minst 3 kommentarer"
         self.cat3.prop.singularis = "inlägg"
         self.cat3.prop.what = "författare"
         self.add_report(self.cat3)
-        self.add_report(tabulator.Report(self.cat3, relative = 1))
+        self.add_report(tabulator.Report(self.cat3, relative = 1, min_total_count = 10))
 
         self.cat4 = ConfNameTabulator()
         self.cat4.prop.title = "Inlägg med minst 4 kommentarer"
         self.cat4.prop.singularis = "inlägg"
         self.cat4.prop.what = "författare"
         self.add_report(self.cat4)
-        self.add_report(tabulator.Report(self.cat4, relative = 1))
+        self.add_report(tabulator.Report(self.cat4, relative = 1, min_total_count = 10))
 
         self.cat5 = ConfNameTabulator()
         self.cat5.prop.title = "Inlägg med minst 5 kommentarer"
         self.cat5.prop.singularis = "inlägg"
         self.cat5.prop.what = "författare"
         self.add_report(self.cat5)
-        self.add_report(tabulator.Report(self.cat5, relative = 1))
+        self.add_report(tabulator.Report(self.cat5, relative = 1, min_total_count = 10))
 
         self.cat10 = ConfNameTabulator()
         self.cat10.prop.title = "Inlägg med minst 10 kommentarer"
         self.cat10.prop.singularis = "inlägg"
         self.cat10.prop.what = "författare"
         self.add_report(self.cat10)
-        self.add_report(tabulator.Report(self.cat10, relative = 1))
+        self.add_report(tabulator.Report(self.cat10, relative = 1, min_total_count = 10))
 
+        # 2002-08-01: Not interesting enough
         self.ct = ConfNameTabulator()
         self.ct.prop.title = "Kommentarer"
         self.ct.prop.what = "författare"
@@ -383,8 +394,9 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub = self.ct.prop.add_sub(ConfNameTabulator)
         sub.what = "kommenterad författare"
         sub.max_displayed = 10
-        self.add_report(self.ct)
-      
+        self.add_report(self.ct, suppress = 1)
+
+        # 2002-08-01: Not interesting enough
         self.rct = ConfNameTabulator()
         self.rct.prop.title = "Kommentarer"
         self.rct.prop.what = "kommenterad författare"
@@ -393,7 +405,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub = self.rct.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
-        self.add_report(self.rct)
+        self.add_report(self.rct, suppress = 1)
       
         self.dct = CommentTabulator()
         self.dct.prop.title = "Kommentarer"
@@ -771,7 +783,14 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
             lines.append("Följande rapporter är tomma och kommer inte att visas:")
             lines.append("")
             lines.extend(empty_lines)
-            
+
+        if len(self.suppressed_reports) > 0:
+            lines.append("")
+            lines.append("Följande rapporter är bortvalda och kommer inte att visas:")
+            lines.append("")
+            for r in self.suppressed_reports:
+                lines.append("- " + r.get_title()) 
+
         body = string.strip(string.join(lines, "\n"))
         no = self.write_article(title, body)
             

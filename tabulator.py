@@ -1,6 +1,6 @@
 # Tabulator and Histogram classes refactored out from the
 # python-lyskom program komconfstats.
-# $Id: tabulator.py,v 1.4 2002/01/27 21:35:05 kent Exp $
+# $Id: tabulator.py,v 1.5 2002/08/01 16:40:03 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 
@@ -98,7 +98,9 @@ class Tabulator(Entry):
             self.dict[key] = SubClass(key, self.prop.next)
         self.dict[key].tabulate(keys[1:], normal, total)
 
-    def report(self, indent = 0, levels = None, relative = 0):
+    def report(self, indent = 0, levels = None,
+               relative = 0,
+               min_total_count = None):
         # This method is common for both normal tabulators and histograms
 
         # No report if we are past the max level
@@ -116,20 +118,22 @@ class Tabulator(Entry):
                 
             l.append("%s (%s)" % (self.get_title(levels, relative),
                                   countstr))
+            if min_total_count is not None:
+                l.append("Rader med totalantal under %d är ej medräknade." % min_total_count)
             l.append("")
             self.report_extra_header(l)
 
         # Now, do the real work. Notice how "l" will be modified by
         # the addition of the report body lines.
 
-        self.report_body(l, indent, levels, relative)
+        self.report_body(l, indent, levels, relative, min_total_count)
 
         return l
 
     def get_title(self, levels = None, relative = 0):
         return self.prop.get_title(levels, relative)
 
-    def report_body(self, l, indent, levels, relative):
+    def report_body(self, l, indent, levels, relative, min_total_count):
         # Specific for tabulators, overridden by histograms
         
         istr = "      " * indent # Six spaces for each level of indentation
@@ -137,9 +141,13 @@ class Tabulator(Entry):
         if relative:
             # A relative report should be order by percentage
             # As we make it an integer, we can get ties.
-            sortlist = map(lambda x, d=self.dict: \
-                           (int(-100*float(d[x].count)/d[x].total_count), d[x]),
-                           self.dict.keys())
+            # Also, we should perhaps remove items with a total_count below
+            # the threshold.
+            sortlist = []
+            for dx in self.dict.values():
+                if min_total_count is None or dx.total_count >= min_total_count:
+                    sortlist.append( (int(-100*float(dx.count)/dx.total_count),
+                                      dx) )
         else:
             # An absolute report is ordered by the count itself
             sortlist = map(lambda x, d=self.dict: (-d[x].count, d[x]),
@@ -209,10 +217,11 @@ class Tabulator(Entry):
 
 
 class Histogram(Tabulator):
-    def report_body(self, l, indent, levels, relative):
+    def report_body(self, l, indent, levels, relative, min_total_count):
         # Specific for histogram, overrides method in Tabulator
 
         assert not relative # FIXME What should a relative histogram look like?
+        assert min_total_count is None # As above
         
         istr = "      " * indent # Six spaces for each level of indentation
 
@@ -391,17 +400,19 @@ class TabulatorProperties:
 #
 
 class Report:
-    def __init__(self, tabulator, levels = None, relative = 0):
+    def __init__(self, tabulator, levels = None, relative = 0, min_total_count = None):
         self.tabulator = tabulator
         self.levels = levels
         self.relative = relative
+        self.min_total_count = min_total_count
 
     def is_empty(self):
         return self.tabulator.is_empty()
     
     def report(self):
         return self.tabulator.report(levels = self.levels,
-                                     relative = self.relative)
+                                     relative = self.relative,
+                                     min_total_count = self.min_total_count)
 
     def get_title(self):
         return self.tabulator.get_title(levels = self.levels,

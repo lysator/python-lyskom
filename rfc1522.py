@@ -1,5 +1,5 @@
 # Handling of RFC1522 coding in mail headers
-# $Id: rfc1522.py,v 1.3 2000/04/20 08:33:45 kent Exp $
+# $Id: rfc1522.py,v 1.4 2001/06/25 21:43:46 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # NOTE! Just enough for the needs of komimportmail. Use with caution.
@@ -34,7 +34,7 @@ def decode(str):
             continue # Look for more coded parts to try to convert
 
         if coding in "qQ":
-            decoded = decode_qp(data)
+            decoded = decode_qp(string.replace(data, "_", " "))
         else:
             decoded = base64.decodestring(data)
         str = str[:m.start(0)] + decoded + str[m.end(0):]

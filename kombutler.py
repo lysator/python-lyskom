@@ -3,6 +3,7 @@
 import sys
 import os
 import socket
+import time
 import string
 from stat import *
 
@@ -26,7 +27,7 @@ class LatentConnection(kom.Connection):
 
 
 class Tasks:
-    MBOX_SIZE_AUX = 25438
+    MBOX_LASTTIME_AUX = 25438
     
     def __init__(self, c, servant, master):
 	self.c = c
@@ -65,49 +66,58 @@ class Tasks:
 	if not self.is_active():
 	    return
 
-	# Find the last position we reported in this file
+	# Find the last rcpt time we reported in this file
 
-	oldsize = 0
+	lasttime = 0
 	delaux = []
 	conf = kom.ReqGetConfStat(self.c, self.servant).response()
 	for aux in conf.aux_items:
-	    if aux.tag == self.MBOX_SIZE_AUX and not aux.flags.deleted:
-		delaux.append(aux.aux_no)
+	    if aux.tag == self.MBOX_LASTTIME_AUX and not aux.flags.deleted:
+		if len(delaux) < 64:
+		    delaux.append(aux.aux_no)
 		try:
-		    oldsize = max(string.atoi(aux.data), 0)
+		    lasttime = string.atoi(aux.data)
 		except ValueError:
 		    pass
-
-	f = open(mbox)
 	
-	# If file has shrunk, or the last position is not "^From ",
-	# reset oldsize
-
-	if s[ST_SIZE] < oldsize:
-	    oldsize = 0
-	elif oldsize > 0:
-	    f.seek(oldsize - 1)
-	    if f.read(6) != '\nFrom ':
-		oldsize = 0
-
+	# if lasttime is later than now, reset it
+	if time.time() < lasttime:
+	    lasttime = 0
+	    
 	# Extract all the new From: and Subject: lines
-	
-	f.seek(oldsize)
-
+	f = open(mbox)
 	lines = f.readlines()
+
 	msg = ['New mail on %s:\n\n' % socket.gethostname()]
 
+	maxtime = lasttime
+	addlines = 0
 	for line in lines:
-	    if string.lower(line[:5]) == 'from:' \
-	       or string.lower(line[:8]) == 'subject:':
-		msg.append(line)
+	    if line[:5] == 'From ':
+		addlines = 0
+		try:
+		    mailtt = time.strptime(line[-21:], ' %b %d %H:%M:%S %Y')
+		    mailtime = int(time.mktime(mailtt))
+		    if lasttime < mailtime:
+			addlines = 1
+			if maxtime < mailtime:
+			    maxtime = mailtime
+		except ValueError:
+		    raise
 
-	# Send message to master
-	kom.ReqSendMessage(self.c, self.master, string.join(msg, '')).response()
+	    if addlines:
+		if string.lower(line[:5]) == 'from:' \
+		   or string.lower(line[:8]) == 'subject:':
+		    msg.append(line)
 
-	# Update mbox position
-	aux = kom.AuxItem(self.MBOX_SIZE_AUX, str(s[ST_SIZE]))
-	kom.ReqModifyConfInfo(self.c, self.servant, [], [aux]).response()
+	if len(msg) > 1:
+	    # Send message to master
+	    kom.ReqSendMessage(self.c, self.master,
+			       string.join(msg, '')).response()
+
+	    # Update last time in mbox
+	    aux = kom.AuxItem(self.MBOX_LASTTIME_AUX, str(maxtime))
+	    kom.ReqModifyConfInfo(self.c, self.servant, delaux, [aux]).response()
 
     
 def main():

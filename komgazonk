@@ -520,7 +520,11 @@ class Gazonk:
 
 
             if guess == self.password:
+                # Lägg till gissningen i lite gissningsdatabaser.
+                self.current_guesses.add(guess)
+                self.per_clue_guesses[self.current_clue].add(guess)
                 self.tstats.add_guess(guess, msg.sender, self, 1, self.current_clue+1)
+
                 self.password_history[0:0] = [self.password]
                 self.password_history = self.password_history[0:50]
                 send_message("Grattis, Du gissade rätt!\nDu är nu ny gazonk!", msg.sender)
@@ -807,14 +811,18 @@ class PersonStats:
             message += "Led:         %2.1f\n" % mc
         if mcmg != None:
             message += "GLed:        %2.1f\n" % (mcmg)
+        extra = ""
         if gpk != None:
             message += "g/k:         %3.1f\n" % gpk
             if mc != None:
-                message += "Gg/k:        %3.1f\n" % (gpk/mc)
+                extra += "g/l:         %3.1f\n" % (gpk/mc)
         if gpkmg != None:
-            message += "g/l:         %3.1f\n" % (gpkmg)
+            message += "Gg/k:        %3.1f\n" % (gpkmg)
+            message += extra
             if mcmg != None:
                 message += "Gg/l:        %3.1f\n" % (gpkmg/mcmg)
+        else:
+            message += extra
 
         message += "\nTop 50 gissningar:\n"
         message += "------------------\n"

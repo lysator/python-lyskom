@@ -18,7 +18,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.2.1"
+VERSION="0.2.3"
 
 INVISIBLE = 1
 
@@ -153,8 +153,11 @@ class Gazonk:
     def set_last_action(self):
         self.time_last_action = time.time()
 
-    def set_current_time(self):
-        self.current_time = ct
+    def set_current_time(self, is_night):
+        c_t = time.time()
+        if is_night:
+            gaz.time_last_action += c_t - self.current_time
+        self.current_time = c_t
 
     def create_guess_list_string(self, max_nr = MAX_ENTRIES_GUESS_LIST):
         message = ""
@@ -1032,15 +1035,11 @@ while 1:
     msleep = MAX_SLEEP_TIME
     ct = time.time()
     is_night = GAZ_SLEEP_HOURS.count(time.localtime(ct).tm_hour) > 0
-    if gaz.current_time >= 0.0 and is_night:
-        gaz.time_last_action += ct - gaz.current_time
-    gaz.set_current_time()
+    gaz.set_current_time(is_night)
     conn.parse_present_data()
     gaz.check_clues()
     gaz.check_monthly()
-    if gaz.current_time >= 0.0 and is_night:
-        ct = time.time()
-        gaz.time_last_action += ct - gaz.current_time
+    if is_night:
         msleep = MAX_SLEEP_TIME_NIGHT
-    gaz.set_current_time()
+    gaz.set_current_time(is_night)
     cPickle.dump(gaz, open(DUMPFILE, 'w'), DUMPBIN)

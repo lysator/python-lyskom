@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.4 2001/01/31 23:12:33 kent Exp $
+# $Id: komconfstats,v 1.5 2001/02/28 23:10:28 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import whrandom
 import jddate # From the lyspython collection
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.4 $"
+vc_revision = "$Revision: 1.5 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -55,11 +55,15 @@ def exit():
     sys.exit(exit_code)
 
 #
-# Split a text into words
+# Split a text into words (removing the subject line!)
 #
 
 def split_text_into_words(text):
+    first_nl = string.find(text,"\n")
+    if first_nl <> -1:
+        text = text[first_nl+1:]
     re_sanitize = re.compile("[^a-zåäö]+")
+
     def mymap(w, r = re_sanitize):
         return r.sub("", string.lower(w))
 
@@ -1091,7 +1095,6 @@ class ConfStats:
                                         self.cat10.tabulate([ts.author])
 
             # Get the text and tabulate the words (max size=1024*1024)
-            # FIXME: Should we refrain from counting the subject words?
 
             if self.full_text:
                 text = kom.ReqGetText(conn, global_no, 0, 1024*1024).response()

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some word statistics about a conference
-# $Id: komconfwords,v 1.16 2002/05/06 17:09:07 kent Exp $
+# $Id: komconfwords,v 1.17 2002/11/07 18:31:23 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -25,7 +25,7 @@ import whrandom
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.16 $"
+vc_revision = "$Revision: 1.17 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -182,7 +182,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
         
         if self.no_of_new_words == 0:
             title = "Ingen ordrapport för %s" % conf_name
-            self.write_article(title, "Inga inlägg funna. Ni är patetiska!\n")
+            self.write_article(title, "Inga inlägg funna! Bah! Jag tror inte ni har liv ändå!!!1!\n")
             return
 
         r.write("Först inlägg: %19s\n" % \
@@ -252,7 +252,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
                     pos_str = '"'
 
                 r.write("%4s) %4d  %-35s %-25s\n" % (pos_str, occ, word, first_author_name[:25]))
-                r.write("                                                %d\n" % first_article)
+                r.write("                                                %25d\n" % first_article)
                 pos = pos + 1
                 last_occ = occ
     

@@ -3,6 +3,9 @@ This is an -*- outline -*- file
 THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 
 * komimportmail
+** Not importing SpamAssassin marked spam (settable)
+** Undigesting RISKS 
+** Removing footers
 ** Check what exit code is used for "already present" (duplication)
 ** Check AI_MX_IN_REPLY_TO semantics (should we include what we really used?)
 ** mail2kom can use recode - should we do that too?
@@ -10,7 +13,6 @@ THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 *** Can we do automatic GC or at least GC while the import is allowed to run?
 *** Can we use MySQL or some other database instead for more advanced locking?
 ** Profile and optimize (it's rather slow now)
-** Get rid of ugly #!/usr/bin/python-1.5.2
 ** Automatic rotation of maillog
 
 ** Client issues

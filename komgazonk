@@ -1,0 +1,374 @@
+#!/usr/bin/env python
+
+import kom
+import time
+import select
+import string
+import os
+import re
+from komgazonk_config import *
+
+CLIENTNAME="komgazonk"
+VERSION="0.0.1"
+
+INVISIBLE = 1
+
+class Gazonk:
+    re_auto_reply = re.compile("^Auto-reply:", re.IGNORECASE)
+    re_ny_gazonk = re.compile("^ny gazonk", re.IGNORECASE)
+    re_losenord_a = re.compile("^lösenord", re.IGNORECASE)
+    re_losenord_b = re.compile("^[Ll][Öö][Ss][Ee][Nn][Oo][Rr][Dd] *([ " + GAZ_PW_CHARS + \
+                               "]{1," + str(GAZ_PW_LENGTH) + "}) *$")
+    re_ledtrad = re.compile("^ledtråd *(.*) *$", re.IGNORECASE)
+    re_byt_ledtrad = re.compile("^byt ledtråd *([0-9]+) *(.*) *$", re.IGNORECASE)
+    re_gissa = re.compile("^gissa *(.*) *$")
+    re_vem = re.compile("^vem", re.IGNORECASE)
+    re_visa = re.compile("^visa", re.IGNORECASE)
+    re_nasta = re.compile("^nästa", re.IGNORECASE)
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.person_no = -1
+        self.password = "";
+        self.clues = []
+        self.current_clue = -1
+        self.time_last_action = -1
+        self.warnings_sent = 0
+        self.last_text_no = -1
+
+    def set_last_action(self):
+        self.time_last_action = time.time()
+
+    def print_me(self):
+        gaz_name = "no name"
+        if self.person_no > 0:
+            gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+        print "Gazonk: %s" % gaz_name
+        print "Password: %s" % self.password
+        print "Clues: " + str(self.clues)
+        print "Current clue: %d" % self.current_clue
+        print "Time for last action: " + str(self.time_last_action)
+        print "Num warnings sent: %d" % self.warnings_sent
+
+    def create_clue_string(self, disp_all):
+        clues = self.clues
+        if disp_all == 0:
+            if self.current_clue == -1:
+                return "Inga ledtrådar att visa\n"
+            clues = clues[:(self.current_clue+1)]
+
+        if len(clues) == 0:
+            return "Inga ledtrådar att visa\n"
+
+        clue_string = ""
+        i = 0
+        for c in clues:
+            i += 1
+            clue_string += str(i) + ". " + c + "\n"
+        return clue_string
+
+    def send_next_clue_letter(self, dont_increase = 0):
+        new = 0
+        if dont_increase == 0:
+            self.current_clue += 1
+            if self.current_clue == 0:
+                new = 1
+
+        gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+        mess_subject = "<Person %d: %s> gazonkar" % (self.person_no, gaz_name)
+        mess_text = self.create_clue_string(0)
+        self.send_letter(mess_subject, mess_text, GAZONK_CONF, new, 0)
+
+    def send_clue_message(self, recipient, disp_all):
+        send_string = "Ledtrådar:\n\n"
+        send_string += self.create_clue_string(disp_all)
+
+        send_message(send_string, recipient)
+
+    def send_letter(self, subject, message, recipient, new, person):
+        recipient_name = kom.ReqGetUconfStat(conn, recipient).response().name
+        log("%s: Brev till %s:" % (get_date_and_time(), recipient_name))
+        log(indent(message, 2) + "\n")
+
+        misc_info = kom.CookedMiscInfo()
+        rec = kom.MIRecipient(kom.MIR_TO, recipient)
+        misc_info.recipient_list.append(rec)
+
+        if new == 0 and person == 0 and self.last_text_no > 0:
+            try:
+                ts = conn.textstats[self.last_text_no]
+                mic = kom.MICommentTo(kom.MIC_COMMENT, self.last_text_no)
+                misc_info.comment_to_list.append(mic)
+            except:
+                log("Old text number %d not found" % self.last_text_no)
+
+        send_text = subject + "\n" + message
+        text_no = kom.ReqCreateText(conn, send_text, misc_info, []).response()
+        if person == 0:
+            self.last_text_no = text_no
+
+    def check_clues(self):
+        log("Checking if we should send out clues or warnings.")
+
+        # Skall vi börja en ny omgång?
+        if len(self.password) > 0 and \
+           len(self.clues) > 0 and \
+           self.current_clue == -1:
+            self.send_next_clue_letter()
+            self.set_last_action()
+            self.warnings_sent = 0
+            return
+
+        current_time = time.time()
+        # Skall vi skicka ut en ny ledtråd?
+        if self.current_clue > -1 and \
+           len(self.clues) > self.current_clue + 1 and \
+           current_time - self.time_last_action > GAZONK_CLUE_TIME:
+            self.send_next_clue_letter()
+            self.set_last_action()
+            self.warnings_sent = 0
+            return
+
+        # Dags att skicka ut påminnelse tro?
+        if self.person_no > 0 and \
+           ((len(self.password) == 0 and len(self.clues) == 0) or \
+            len(self.clues) <= self.current_clue + 1) and \
+           current_time - self.time_last_action > \
+           GAZONK_REMEMBER_TIME * (self.warnings_sent + 1):
+            self.warnings_sent += 1
+
+            # Har vi skickat tillräckligt med varningar nu?
+            if self.warnings_sent > GAZ_MAX_WARNINGS:
+                my_name = kom.ReqGetUconfStat(conn, KOMPERSON).response().name
+                gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                self.send_letter("Du är inte längre gazonk!",
+                                 "Du har inte lyssnat på varningarna och blir därmed \n" + \
+                                 "fråntagen din gazonktitel!",
+                                 self.person_no, 1, 1)
+                message = "Vem som helst kan nu bli gazonk. Skicka bara 'ny gazonk'" + \
+                          "\ni ett meddelande till <Person %d: %s>\n\n" % (KOMPERSON, my_name)
+                if len(self.password) > 0 and len(self.clues) > 0:
+                    message += "Föregående lösenord var '%s'." % self.password
+
+                self.send_letter("<Person %d: %s> ej längre gazonk!" % \
+                                 (self.person_no, gaz_name),
+                                 message, GAZONK_CONF, 0, 0)
+                self.reset()
+                return
+
+            # Skicka varningen
+            message = "Det finns inte tillräckligt med ledtrådar i ledtrådskön."
+            future_warnings = GAZ_MAX_WARNINGS - self.warnings_sent
+            if self.warnings_sent >= 2:
+                message += "\n\nOm ledtrådskön ej fyllts på efter %d fler varningar \n" % \
+                           future_warnings
+                message += "kommer din gazonk-titel att fråntas dig!"
+            self.send_letter("Detta är en påminnelse om att du är gazonk!",
+                             message, self.person_no, 1, 1)
+            return
+
+    def parse_message(self, msg, c):
+        sender_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
+        log("%s: Meddelande (%d) från %s:" % (get_date_and_time(), msg.recipient, sender_name))
+        log(indent(msg.message, 2) + "\n")
+
+        # Svara ej på automatsvar.
+        m = Gazonk.re_auto_reply.search(msg.message)
+        if m:
+            return
+
+        # Saker som endast kan göras om ingen gazonk finns:
+        if self.person_no == -1:
+            # Är detta en request för ny gazonk?
+            m = Gazonk.re_ny_gazonk.search(msg.message)
+            if m:
+                self.reset()
+                self.person_no = msg.sender
+                self.set_last_action()
+                send_message("Du är nu ny gazonk!", msg.sender)
+                return
+
+        # Saker som endast nuvarande gazonk får göra:
+        if self.person_no == msg.sender:
+            # Skall vi sätta ett nytt lösenord
+            ma = Gazonk.re_losenord_a.search(msg.message)
+            mb = Gazonk.re_losenord_b.match(msg.message)
+            # Vi får enbart sätta lösenordet om omgången ej är startad än.
+            if ma and self.current_clue > -1:
+                send_message("Ledtrådar är redan givna, så du kan inte ändra lösenordet nu.", \
+                             msg.sender)
+                return
+            elif ma and mb:
+                self.password = mb.group(1)
+                self.clues = []
+                self.current_clue = -1
+                self.time_last_action = -1
+                self.warnings_sent = 0
+                self.last_text_no = 0
+                self.set_last_action()
+                send_message("Nytt lösenord är '%s'." % self.password, msg.sender)
+                return
+            elif ma:
+                send_message("Ditt lösenord godkändes ej.\n\n" + \
+                             "Ett lösenord skall enbart innehålla bokstäverna\n" + \
+                             "a-z, å, ä, ö, samt vara mellan 1 och 12 bokstäver långt.", \
+                             msg.sender)
+                return
+
+            # Skall vi lägga till en ny ledtråd?
+            m = Gazonk.re_ledtrad.match(msg.message)
+            if m and len(self.password) == 0:
+                send_message("Skriv in lösenord innan du skriver in ledtrådar.", msg.sender)
+                return
+            elif m:
+                clue = m.group(1)
+                if len(clue) != 0:
+                    self.clues.append(m.group(1))
+                self.send_clue_message(msg.sender, 1)
+                return
+
+            # Skall byta ut en ledtråd?
+            m = Gazonk.re_byt_ledtrad.match(msg.message)
+            if m and len(self.password) == 0:
+                send_message("Skriv in lösenord innan du skriver in ledtrådar.", msg.sender)
+                return
+            elif m:
+                nr = int(m.group(1))
+                clue = m.group(2)
+                if nr > len(self.clues):
+                    send_message("Ledtrådsnumret finns inte.", msg.sender)
+                    return
+                elif nr > 0:
+                    self.clues[nr-1] = clue
+                    send_message("Ledtråd %d byttes ut till: %s" % (nr, clue), msg.sender)
+                    if nr <= self.current_clue + 1:
+                        self.send_next_clue_letter(1)
+                    return
+
+        # Saker som alla får göra:
+
+        # Vem är gazonk?
+        m = Gazonk.re_vem.search(msg.message)
+        if m:
+            if self.person_no > 0:
+                gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                send_message("<Person %d: %s> är gazonk!" % (self.person_no, gaz_name), \
+                             msg.sender)
+            else:
+                send_message("Ingen person är gazonk just nu!", msg.sender)
+            return
+
+        # Visa nuvarande ledtrådar
+        m = Gazonk.re_visa.search(msg.message)
+        if m:
+            if self.current_clue == -1:
+                send_message("Ingen gazonk-omgång pågår just nu.", msg.sender)
+            else:
+                self.send_clue_message(msg.sender, 0)
+            return
+
+        # Visa när nästa ledtråd kommer
+        m = Gazonk.re_nasta.search(msg.message)
+        if m:
+            current_time = time.time()
+            if self.current_clue == -1:
+                send_message("Ingen gazonk-omgång pågår just nu.", msg.sender)
+                return
+            elif current_time - self.time_last_action > GAZONK_CLUE_TIME:
+                send_message("Nästa ledtråd borde redan ha sänts, tjata på gazonk!", msg.sender)
+                return
+            else:
+                next_clue_time = self.time_last_action + GAZONK_CLUE_TIME - current_time
+                message = "Det är %d timmar och %d minuter kvar till nästa ledtråd" % \
+                          (int(next_clue_time/3600), int(next_clue_time/60))
+                send_message(message, msg.sender)
+                return
+
+        # Saker som alla utom gazonk får göra:
+        if self.person_no != msg.sender:
+            if self.current_clue == -1:
+                send_message("Ingen gazonk-omgång pågår just nu.", msg.sender)
+                return
+            # Har vi gissat rätt lösenord?
+            m = Gazonk.re_gissa.match(msg.message)
+            sm = msg.message.strip()
+            if (m and m.group(1) == self.password) or (sm == self.password):
+                send_message("Grattis, Du gissade rätt!\nDu är nu ny gazonk!", msg.sender)
+                gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                new_gaz_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
+                mess_subject = "<Person %d: %s> gazonkar" % (self.person_no, gaz_name)
+                mess_text = "<Person %d: %s> klarade lösenordet och är ny gazonk!\n\n" % \
+                            (msg.sender, new_gaz_name)
+                mess_text += "Lösenordet var '%s'." % self.password
+                self.send_letter(mess_subject, mess_text, GAZONK_CONF, 0, 0)
+                self.reset()
+                self.person_no = msg.sender
+                self.set_last_action()
+                return
+            else:
+                send_message("Fel, fel, fel ,fel!", msg.sender)
+                return
+
+        # Detta kommando var inte begripligt
+        send_message("Jag begriper inte vad du vill göra!", msg.sender)
+        return
+
+# Loggning
+def log(txt):
+    if LOG == 1:
+        if txt[-1:] <> "\n":
+            txt = txt + "\n"
+        logfile.write(txt)
+        logfile.flush()
+
+def get_date_and_time():
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+
+# Indentering
+def indent(txt, spaces):
+    lines = string.split(txt, "\n")
+    lines = map(lambda line, prefix=" "*spaces: prefix + line, lines)
+    return string.join(lines, "\n")
+
+def send_message(message, recipient):
+    recipient_name = kom.ReqGetUconfStat(conn, recipient).response().name
+    log("%s: Meddelande till %s:" % (get_date_and_time(), recipient_name))
+    log(indent(message, 2) + "\n")
+
+    try:
+        kom.ReqSendMessage(conn, recipient, message).response()
+        kom.ReqUserActive(conn).response()
+    except:
+        log("Misslyckades med att skicka meddelande.")
+
+#
+# Huvudkod
+#
+
+# Öppna en logfil, kan vara bra att ha :-)
+logfile = open(LOGFILE, "a")
+log("Starting")
+
+# Skapa en gazonk-information
+gaz = Gazonk();
+
+# Koppla upp sig, logga in och annat kul
+log("Kopplar upp")
+conn = kom.CachedConnection(KOMSERVER, port = KOMPORT)
+log("Loggar in")
+kom.ReqLogin(conn, KOMPERSON, KOMPASSWORD, INVISIBLE).response()
+kom.ReqSetClientVersion(conn, CLIENTNAME, VERSION)
+log("Gazonk!")
+
+# Hantera meddelanden
+
+conn.add_async_handler(kom.ASYNC_SEND_MESSAGE, gaz.parse_message)
+kom.ReqAcceptAsync(conn, [kom.ASYNC_SEND_MESSAGE]).response()
+
+while 1:
+    select.select([conn.socket], [], [], MAX_SLEEP_TIME)
+    conn.parse_present_data()
+    gaz.check_clues()
+    #gaz.print_me()

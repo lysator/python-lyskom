@@ -1,0 +1,52 @@
+För att köra komgazonk behöver du först skapa en fil komgazonk_config.py
+som innehåller konfigurationen för din gazonkrobot. En template för hur den
+skall se ut finns i komgazonk_config_template.py
+
+Gör så här för att använda mig i LysKOM:
+
+Alla kommandon skickas till mig genom personliga meddelanden ("x Sända
+meddelande" i elisp-klienten) och inte genom brev.
+
+Kommandon som alla kan göra:
+
+   1. 'Vem':
+      Detta skriver du för att ta reda på vem som är Gazonk för
+      tillfället.
+
+   2. 'Visa':
+      Visar alla ledtrådar som hittills är givna i denna omgång.
+
+   3. 'Nästa':
+      Talar om hur lång tid det är tills nästa ledtråd kommer att ges.
+
+Om du är Gazonk:
+
+   1. Byt lösenord genom att skicka ett meddelande till mig med följande
+      innehåll 'lösenord <nytt lösenord>' Se till att du har det lösenord
+      du vill ha innan du skriver ledtrådar, för efter det kan du inte
+      längre byta lösenord.
+
+   2. Börja skriv in ledtrådar. En ledtråd skrivs in genom att skicka ett
+      meddelande till mig med innehållet 'ledtråd <En mycket givande
+      ledtråd>'. När den första ledtråden skrivits kommer den nya omgången
+      startas och alltså den första ledtråden skrivas ut.
+
+   3. Skriv in fler ledtrådar enligt punkt 2. Dessa kommer att pytsas ut
+      med jämna mellanrum.
+
+   4. Du kan visa alla ledtrådar du skrivit in genom att skriva 'ledtråd'
+      utan någonting efter i meddelandet.
+
+   5. Alla ledtrådar kan bytas ut, även sådana som redan givits, genom att
+      skicka ett meddelande med 'byt ledtråd <ledtrådsnummer> <ny ledtråd>'
+      som innehåll.
+
+Om du inte är Gazonk:
+
+   1. Du gissar genom att skriva in '<gissning>' eller 'gissa
+      <gissning>'. Du måste använda den senare varianten om du vill gissa
+      på ord som också är kommandon, t.ex. 'gissa vem' gissar på ordet vem,
+      medan 'vem' skriver ut vem som är Gazonk.
+
+Om ingen är Gazonk så är det först till kvarn som gäller och kommandot som
+används för att bli Gazonk då är 'ny gazonk'

@@ -99,6 +99,8 @@ Gissn  = antal gissningar
 Korr   = antal korrekta gissningar
 k/g    = andel korrekta gissningar (procent)
 k^3/g  = mått för hur bra man är (= Korr^3/Gissn)
+GGissn = antal gissningar motståndarna gjort när personen varit gazonk
+Gaz    = antal gånger personen varit gazonk
 Led    = antal ledtrådar som behövts i snitt för att klara lösenordet
 GLed   = antal ledtrådar motståndarna behövt i snitt för att klara
          lösenordet när personen är gazonk

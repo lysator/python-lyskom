@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.11"
+VERSION="0.3.12"
 
 INVISIBLE = 0
 
@@ -115,6 +115,8 @@ Gissn  = antal gissningar
 Korr   = antal korrekta gissningar
 k/g    = andel korrekta gissningar (procent)
 k^3/g  = mått för hur bra man är (= Korr^3/Gissn)
+GGissn = antal gissningar motståndarna gjort när personen varit gazonk
+Gaz    = antal gånger personen varit gazonk
 Led    = antal ledtrådar som behövts i snitt för att klara lösenordet
 GLed   = antal ledtrådar motståndarna behövt i snitt för att klara
          lösenordet när personen är gazonk
@@ -667,7 +669,7 @@ class Gazonk:
                         subject = "%s gazonkar" % shorten_name(gaz_name)
                         message = "Tidsintervallet mellan ledtrådar har ändrats och \när nu %s\n\n" % \
                                   ti_format
-                        message += self.create_next_clues_string(1)
+                        message += self.create_next_clues_string(0)
                         self.send_letter(subject, message, GAZONK_CONF, 0, 0)
                 else:
                     send_message("Tidsintervallet är samma som förut. Ingen förändring.", \
@@ -1051,7 +1053,7 @@ class Stats:
             plist_d = [(p, st, psc) for (a, b, c, p, st, psc) in plist_d]
 
             letter_d = self.make_stat_letter(plist_d, \
-                                             ["guesses", "win_count", "gled", "ggpk", "ggpl"], \
+                                             ["gguesses", "gazonks", "gled", "ggpk", "ggpl"], \
                                              "De som gör svårast gazonkningar:")
             g.send_letter(subject, letter_d, GAZONK_CONF, 1, 1, [text_no])
 
@@ -1064,6 +1066,8 @@ class Stats:
                    'win_count': ('Korr', 4, "%d"), \
                    'kpg': ('k/g', 7, "%3.2f%%"), \
                    'kcube_pg': ('k^3/g', 8, "%5.2f"), \
+                   'gguesses': ('GGissn', 6, "%d"), \
+                   'gazonks': ('Gaz', 4, "%d"), \
                    'led': ('Led', 4, "%2.1f"), \
                    'gled': ('GLed', 4, "%2.1f"), \
                    'gpk': ('g/k', 5, "%3.1f"), \
@@ -1137,6 +1141,8 @@ class PersonStats:
         if self.guesses.count > 0:
             kpg = float(self.win_count)/float(self.guesses.count)
             kcube_pg = float((self.win_count)**3)/float(self.guesses.count)
+        gguesses = self.gpk_coc_mg.total_clues
+        gazonks = self.gpk_coc_mg.amount
         led = self.m_coc.get()
         gled = self.m_coc_mg.get()
         gpk = self.gpk_coc.get()
@@ -1148,7 +1154,7 @@ class PersonStats:
         if ggpk != None and gled != None:
             ggpl = ggpk/gled
         return StatTuple(self.guesses.count, self.win_count, kpg, kcube_pg, \
-                         led, gled, gpk, ggpk, gpl, ggpl)
+                         gguesses, gazonks, led, gled, gpk, ggpk, gpl, ggpl)
 
     def send_person_stats(self, person_no, about_person = None):
         stat_tuple = self.make_stat_tuple()
@@ -1157,24 +1163,26 @@ class PersonStats:
         if about_person != None:
             message = "Statistik om <Person %d: %s>.\n\n" % about_person
 
-        message += "Gissningar:  %d\n" % stat_tuple.guesses
-        message += "Korrekta:    %d\n" % stat_tuple.win_count
+        message += "Gissningar:   %d\n" % stat_tuple.guesses
+        message += "Korrekta:     %d\n" % stat_tuple.win_count
         if stat_tuple.kpg != None:
-            message += "k/g:         %3.2f%%\n" % (stat_tuple.kpg*100.0)
+            message += "k/g:          %3.2f%%\n" % (stat_tuple.kpg*100.0)
         if stat_tuple.kpg != None:
-            message += "k^3/g:       %5.2f\n" % stat_tuple.kcube_pg
+            message += "k^3/g:        %5.2f\n" % stat_tuple.kcube_pg
+        message += "GGissningar:  %d\n" % stat_tuple.gguesses
+        message += "Gazonkningar: %d\n" % stat_tuple.gazonks
         if stat_tuple.led != None:
-            message += "Led:         %2.1f\n" % stat_tuple.led
+            message += "Led:          %2.1f\n" % stat_tuple.led
         if stat_tuple.gled != None:
-            message += "GLed:        %2.1f\n" % stat_tuple.gled
+            message += "GLed:         %2.1f\n" % stat_tuple.gled
         if stat_tuple.gpk != None:
-            message += "g/k:         %3.1f\n" % stat_tuple.gpk
+            message += "g/k:          %3.1f\n" % stat_tuple.gpk
         if stat_tuple.ggpk != None:
-            message += "Gg/k:        %3.1f\n" % stat_tuple.ggpk
+            message += "Gg/k:         %3.1f\n" % stat_tuple.ggpk
         if stat_tuple.gpl != None:
-            message += "g/l:         %3.1f\n" % stat_tuple.gpl
+            message += "g/l:          %3.1f\n" % stat_tuple.gpl
         if stat_tuple.ggpl != None:
-            message += "Gg/l:        %3.1f\n" % stat_tuple.ggpl
+            message += "Gg/l:         %3.1f\n" % stat_tuple.ggpl
 
         message += "\nTop 50 gissningar (fler än 2):\n"
         message += "------------------\n"
@@ -1267,11 +1275,14 @@ class AverageCoC:
         self.total_clues += other.total_clues
 
 class StatTuple:
-    def __init__(self, guesses, win_count, kpg, kcube_pg, led, gled, gpk, ggpk, gpl, ggpl):
+    def __init__(self, guesses, win_count, kpg, kcube_pg, \
+                 gguesses, gazonks, led, gled, gpk, ggpk, gpl, ggpl):
         self.guesses = guesses
         self.win_count = win_count
         self.kpg = kpg
         self.kcube_pg = kcube_pg
+        self.gguesses = gguesses
+        self.gazonks = gazonks
         self.led = led
         self.gled = gled
         self.gpk = gpk
@@ -1281,8 +1292,10 @@ class StatTuple:
 
     def __str__(self):
         return "<StatTuple.{'guesses': %s, 'win_count': %s, 'kpg': %s, 'kcube_pg': %s" \
+               ", 'gguesses': %s, 'gazonks': %s" \
                ", 'led': %s, 'gled': %s, 'gpk': %s, 'ggpk': %s, 'gpl': %s, 'ggpl': %s}>" % \
                (str(self.guesses), str(self.win_count), str(self.kpg), str(self.kcube_pg), \
+                str(self.gguesses), str(self.gazonks), \
                 str(self.led), str(self.gled), str(self.gpk), str(self.ggpk), \
                 str(self.gpl), str(self.ggpl))
 

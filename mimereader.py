@@ -1,4 +1,12 @@
 # Support for reading, decoding and decomposing MIME messages.
+# $Id: mimereader.py,v 1.2 1999/07/19 22:43:15 kent Exp $
+# (C) 1999 Kent Engström. Released under GPL.
+
+# This module is primarily designed for use with komimportmail,
+# but should be useful in other situations too.
+
+# Note: Python 1.5.2 is needed because we need to call
+# multifile.MultiFile with seekable = 0.
 
 import mimetools
 import multifile
@@ -7,9 +15,12 @@ import cStringIO
 import os
 
 # This class represents a mail message in MIME format or basic RFC 822
-# format.
+# format. Attributes:
+# - headers: mimetools.Message object encapsulating the message headers 
+# - data: the Part object corresponding to the message body
 
 class Message:
+    # Initialize and read the message from a file object
     def __init__(self, infile):
         self.headers = mimetools.Message(infile, seekable = 0)
         if self.headers.has_key("MIME-Version"):
@@ -26,12 +37,17 @@ class Message:
                                      maintype ="text",
                                      subtype = "plain")
 
+    # Return a string describing the structure of the message
     def show_structure(self):
         if self.mime:
             head = "MIME message consisting of:"
         else:
             head = "RFC822 message consisting of:"
         return head + "\n" + self.data.show_structure(1)
+
+    # Return a linear list of all discrete parts
+    def linear_list_of_discrete_parts(self):
+        return self.data.linear_list_of_discrete_parts()
 
 class Part:
     def __init__(self, headers, infile, maintype = None, subtype = None):
@@ -68,12 +84,23 @@ class DiscretePart(Part):
             # Unknown coding or 7bit/8bit/binary: just read it
             self.data = infile.read()
 
+        # If the content type is text, convert CRLF to LF
+        # FIXME: does this create problems? Restrict to text/plain?
+        if self.maintype == "text":
+            self.data = string.replace(self.data, "\r\n", "\n")
+
+    def __repr__(self):
+        return "<%s/%s, size: %d>" % \
+               (self.maintype, self.subtype, len(self.data))
+
     def show_structure(self, level):
         return "%s- %s/%s (%d bytes)\n" % \
                (" " * (level * 4),
                 self.maintype, self.subtype,
                 len(self.data))
         
+    def linear_list_of_discrete_parts(self):
+        return [self]
         
 # Attributes of a multipart
 # - maintype, subtype: MIME type
@@ -91,7 +118,7 @@ class MultiPart(Part):
             # They are cheating on us! Try to survive.
             boundary = "=-=-=-EmergencyBoundary%d" % os.getpid()
             
-        mf = multifile.MultiFile(infile)
+        mf = multifile.MultiFile(infile, seekable = 0)
         mf.push(boundary)
 
         # We should skip all data before the first section marker,
@@ -104,7 +131,11 @@ class MultiPart(Part):
             else:
                 self.parts.append(DiscretePart(subheaders, mf))
         mf.pop()
-        
+
+    def __repr__(self):
+        return "<%s/%s, parts: %d>" % \
+               (self.maintype, self.subtype, len(self.parts))
+
     def show_structure(self, level):
         return "%s- %s/%s (%d parts)\n" % \
                (" " * (level * 4),
@@ -113,3 +144,9 @@ class MultiPart(Part):
                 string.join(map(lambda x, l=level + 1: x.show_structure(l),
                                 self.parts),
                             "")
+    def linear_list_of_discrete_parts(self):
+        ll = []
+        for p in self.parts:
+            ll = ll + p.linear_list_of_discrete_parts()
+        return ll
+    

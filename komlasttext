@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komlasttext,v 1.1 2002/01/13 20:27:28 kent Exp $
+# $Id: komlasttext,v 1.2 2002/01/15 22:42:40 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom
 import komparam
 import sys
+import getopt
 
 # Connect and log in
 
@@ -15,7 +16,31 @@ if conn is None:
     sys.stderr.write("%s: %s\n" % (sys.argv[0], error))
     sys.exit(1)
 
+# Check for options
+
+conference = None
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   ["conference=",
+                                    ])
+for (opt, optarg) in options:
+    if opt == "--conference":
+        confs = conn.lookup_name(optarg, want_pers = 1, want_confs = 1)
+        if len(confs) == 1:
+            conference = confs[0][0]
+        elif len(confs) > 1:
+            sys.stderr.write("%s is not a unique name\n"% optarg)
+            sys.exit(1)
+        else:
+            sys.stderr.write("%s not found\n" % optarg)
+            sys.exit(1)
+
 # Get number of last text
 
-last_text = kom.ReqFindPreviousTextNo(conn, sys.maxint).response()
+if conference:
+    last_text = conn.uconferences[conference].highest_local_no
+else:
+    last_text = kom.ReqFindPreviousTextNo(conn, sys.maxint).response()
+
 print last_text

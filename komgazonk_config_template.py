@@ -27,6 +27,11 @@ LOGFILE = "/FIXME/log"
 # Set to one if you want to log things in a file.
 LOG = 0
 
+# If you want to have a pid file, set to 1
+PID = 1
+# The location and name of the pid file
+PIDFILE = "/FIXME/komgazonk.pid"
+
 # Max time gazonk should take between checking if we should out
 # another letter (in seconds).
 MAX_SLEEP_TIME = 60

@@ -1,6 +1,6 @@
 # -*- coding: iso-8859-1 -*-
 # LysKOM Protocol A version 10/11 client interface for Python
-# $Id: kom.py,v 1.34 2003/12/07 20:51:35 astrand Exp $
+# $Id: kom.py,v 1.35 2003/12/09 21:35:01 astrand Exp $
 # (C) 1999-2002 Kent Engström. Released under GPL.
 
 import socket
@@ -2541,8 +2541,7 @@ class CachedUserConnection(CachedConnection):
 
     def get_member_confs(self):
         result = []
-        # FIXME: Change want_read_texts to 0 as soon as we supports it. 
-        ms_list = ReqGetMembership(self, self._user_no, 0, 10000, want_read_texts=1).response()
+        ms_list = ReqGetMembership(self, self._user_no, 0, 10000, want_read_texts=0).response()
         for ms in ms_list:
             if (ms.priority != 0) and (not ms.type.passive):
                 result.append(ms.conference)

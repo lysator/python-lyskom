@@ -1,6 +1,6 @@
 # -*- coding: iso-8859-1 -*-
 # LysKOM Protocol A version 10/11 client interface for Python
-# $Id: kom.py,v 1.35 2003/12/09 21:35:01 astrand Exp $
+# $Id: kom.py,v 1.36 2003/12/25 20:05:28 astrand Exp $
 # (C) 1999-2002 Kent Engström. Released under GPL.
 
 import socket
@@ -2532,8 +2532,12 @@ class CachedUserConnection(CachedConnection):
         self.no_unread = Cache(self.fetch_unread, "Number of unread")
         # FIXME: Add support for aux-items, session-information, textmappings etc.
         
-    def set_user(self, user_no):
+    def set_user(self, user_no, set_member_confs=1):
         self._user_no = user_no
+        if set_member_confs:
+            self.set_member_confs()
+
+    def set_member_confs(self):
         self.member_confs = self.get_member_confs()
 
     def get_user(self):

@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.24 2002/03/03 20:36:11 forsberg Exp $
+# $Id: kom.py,v 1.25 2002/05/01 20:03:46 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -1991,7 +1991,9 @@ class Connection:
     # Send a raw string
     def send_string(self, s):
         #print ">>>",s
-        self.socket.send(s)
+        while len(s) > 0:
+            done = self.socket.send(s)
+            s = s[done:]
 
     # Ensure that there are at least N bytes in the receive buffer
     # FIXME: Rewrite for speed and clarity

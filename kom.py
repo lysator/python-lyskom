@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.3 1999/07/13 22:18:42 kent Exp $
+# $Id: kom.py,v 1.4 1999/07/14 14:14:40 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -213,7 +213,7 @@ class ReqSetPrivBits(Request):
         self.register(c)
         c.send_string("%d 7 %d %s\n" % (self.id,
                                         person_no,
-                                        privileges.get_string()))
+                                        privileges.to_string()))
 
 # set-passwd [8] (1) Recommended
 class ReqSetPasswd(Request):
@@ -279,7 +279,7 @@ class ReqSetConfType(Request):
         self.register(c)
         c.send_string("%d 21 %d %s\n" % (self.id,
                                          conf_no,
-                                         type.get_string()))
+                                         type.to_string()))
 
 # set-garb-nice [22] (1) Recommended
 class ReqSetGarbNice(Request):
@@ -408,6 +408,17 @@ class ReqSyncKOM(Request):
         self.register(c)
         c.send_string("%d 43\n" % (self.id))
 
+# shutdown-kom [44] (1) Recommended
+class ReqShutdownKOM(Request):
+    def __init__(self, c, exit_val):
+        self.register(c)
+        c.send_string("%d 44 %d\n" % (self.id, exit_val))
+
+# broadcast [45] (1) Obsolete (1) Use send-message (53)
+# get-membership-old [46] (1) Obsolete (10) Use get-membership (99)
+# get-created-texts [47] (1) Obsolete (10) Use map-created-texts (104)
+# get-members-old [48] (1) Obsolete (10) Use get-members (101)
+
 # get-person-stat [49] (1) Recommended
 class ReqGetPersonStat(Request):
     def __init__(self, c, person_no):
@@ -420,6 +431,9 @@ class ReqGetPersonStat(Request):
 
 # get-conf-stat-old [50] (1) Obsolete (10) Use get-conf-stat (91)
 
+# who-is-on [51] (1) Obsolete (9)  Use who-is-on-dynamic (83) and
+#                                      get-static-session-info (84)
+
 # get-unread-confs [52] (1) Recommended
 class ReqGetUnreadConfs(Request):
     def __init__(self, c, person_no):
@@ -430,12 +444,141 @@ class ReqGetUnreadConfs(Request):
         # --> ARRAY Conf-No
         return self.c.parse_array_of_int()
 
+# send-message [53] (1) Recommended
+class ReqSendMessage(Request):
+    def __init__(self, c, conf_no, message):
+        self.register(c)
+        c.send_string("%d 53 %d %dH%s\n" %
+                      (self.id, conf_no, len(message), message))
+
+# get-session-info [54] (1) Obsolete (9) Use who-is-on-dynamic (83)
+
+# disconnect [55] (1) Recommended
+class ReqDisconnect(Request):
+    def __init__(self, c, session_no):
+        self.register(c)
+        c.send_string("%d 55 %d\n" %
+                      (self.id, session_no))
+
+# who-am-i [56] (1) Recommended
+class ReqWhoAmI(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 56\n" % (self.id))
+        
+    def parse_response(self):
+        # --> Session-No
+        return self.c.parse_int()
+
+# set-user-area [57] (2) Recommended
+class ReqSetUserArea(Request):
+    def __init__(self, c, person_no, user_area):
+        self.register(c)
+        c.send_string("%d 57 %d %d\n" % (self.id, person_no, user_area))
+
+# get-last-text [58] (3) Recommended
+# FIXME!
+
+# create-anonymous-text-old [59] (3) Obsolete (10)
+#                                    Use create-anonymous-text (87)
+
+# find-next-text-no [60] (3) Recommended
+class ReqFindNextTextNo(Request):
+    def __init__(self, c, start):
+        self.register(c)
+        c.send_string("%d 60 %d\n" % (self.id, start))
+        
+    def parse_response(self):
+        # --> Text-No
+        return self.c.parse_int()
+
+# find-previous-text-no [61] (3) Recommended
+class ReqFindPreviousTextNo(Request):
+    def __init__(self, c, start):
+        self.register(c)
+        c.send_string("%d 61 %d\n" % (self.id, start))
+        
+    def parse_response(self):
+        # --> Text-No
+        return self.c.parse_int()
+
 # login [62] (4) Recommended
 class ReqLogin(Request):
     def __init__(self, c, person_no, password, invisible = 0):
         self.register(c)
         c.send_string("%d 62 %d %dH%s %d\n" %
                       (self.id, person_no, len(password), password, invisible))
+
+# who-is-on-ident [63] (4) Obsolete (9) Use who-is-on-dynamic (83) and
+#                                           get-static-session-info (84)
+# get-session-info-ident [64] (4) Obsolete (9) Use who-is-on-dynamic (83) and
+#                                              get-static-session-info (84)
+# re-lookup-person [65] (5) Obsolete (7) Use re-z-lookup (74)
+# re-lookup-conf [66] (5) Obsolete (7) Use re-z-lookup (74)
+# lookup-person [67] (6) Obsolete (7) Use lookup-z-name (76)
+# lookup-conf [68] (6) Obsolete (7) Use lookup-z-name (76)
+
+# set-client-version [69] (6) Recommended
+class ReqSetClientVersion(Request):
+    def __init__(self, c, client_name, client_version):
+        self.register(c)
+        c.send_string("%d 69 %dH%s %dH%s\n" %
+                      (self.id,
+                       len(client_name), client_name,
+                       len(client_version), client_version))
+
+# get-client-name [70] (6) Recommended
+class ReqGetClientName(Request):
+    def __init__(self, c, session_no):
+        self.register(c)
+        c.send_string("%d 70 %d\n" % (self.id, session_no))
+        
+    def parse_response(self):
+        # --> Hollerith
+        return self.c.parse_string()
+
+# get-client-version [71] (6) Recommended
+class ReqGetClientVersion(Request):
+    def __init__(self, c, session_no):
+        self.register(c)
+        c.send_string("%d 71 %d\n" % (self.id, session_no))
+        
+    def parse_response(self):
+        # --> Hollerith
+        return self.c.parse_string()
+
+# mark-text [72] (4) Recommended
+class ReqMarkText(Request):
+    def __init__(self, c, text_no, mark_type):
+        self.register(c)
+        c.send_string("%d 72 %d %d\n" % (self.id, text_no, mark_type))
+
+# unmark-text [73] (6) Recommended
+class ReqUnmarkText(Request):
+    def __init__(self, c, text_no):
+        self.register(c)
+        c.send_string("%d 73 %d\n" % (self.id, text_no))
+
+# re-z-lookup [74] (7) Recommended
+class ReqReZLookup(Request):
+    def __init__(self, c, regexp, want_pers = 0, want_confs = 0):
+        self.register(c)
+        c.send_string("%d 74 %dH%s %d %d\n" %
+                      (self.id, len(regexp), regexp, want_pers, want_confs))
+
+    def parse_response(self):
+        # --> ARRAY ConfZInfo
+        return self.c.parse_array(ConfZInfo)
+
+# get-version-info [75] (7) Recommended
+class ReqGetVersionInfo(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 75\n" % (self.id))
+
+    def parse_response(self):
+        # --> Version-Info
+        return self.c.parse_object(VersionInfo)
 
 # lookup-z-name [76] (7) Recommended
 class ReqLookupZName(Request):
@@ -447,13 +590,89 @@ class ReqLookupZName(Request):
     def parse_response(self):
         # --> ARRAY ConfZInfo
         return self.c.parse_array(ConfZInfo)
-        pass
-    
+
+# set-last-read [77] (8) Recommended
+class ReqSetLastRead(Request):
+    def __init__(self, c, conf_no, last_read):
+        self.register(c)
+        c.send_string("%d 77 %d %d\n" % \
+                      (self.id, conf_no, last_read))
+
+# get-uconf-stat [78] (8) Recommended
+class ReqGetUconfStat(Request):
+    def __init__(self, c, conf_no):
+        self.register(c)
+        c.send_string("%d 78 %d\n" % (self.id, conf_no))
+
+    def parse_response(self):
+        # --> UConference
+        return self.c.parse_object(UConference)
+
+# set-info [79] (9) Recommended
+# FIXME!
+
+# accept-async [80] (9) Recommended
+class ReqAcceptAsync(Request):
+    def __init__(self, c, request_list):
+        self.register(c)
+        c.send_string("%d 80 %s\n" %
+                      (self.id,
+                       c.array_of_int_to_string(request_list)))
+
+# query-async [81] (9) Recommended
+class ReqQueryAsync(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 81\n" % (self.id))
+
+    def parse_response(self):
+        # --> ARRAY INT32
+        return self.c.parse_array_of_int()
+
+# user-active [82] (9) Recommended
+class ReqUserActive(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 82\n" % (self.id))
+
+# who-is-on-dynamic [83] (9) Recommended
+class ReqWhoIsOnDynamic(Request):
+    def __init__(self, c,
+                 want_visible = 1, want_invisible = 0,
+                 active_last = 0):
+        self.register(c)
+        c.send_string("%d 83 %d %d %d\n" % \
+                      (self.id, want_visible, want_invisible, active_last))
+
+    def parse_response(self):
+        # --> ARRAY Dynamic-Session-Info
+        return self.c.parse_array(DynamicSessionInfo)
+
+# get-static-session-info [84] (9) Recommended
+class ReqGetStaticSessionInfo(Request):
+    def __init__(self, c, session_no):
+        self.register(c)
+        c.send_string("%d 84 %d\n" % (self.id, session_no))
+
+    def parse_response(self):
+        # --> Static-Session-Info
+        return self.c.parse_object(StaticSessionInfo)
+
+# get-collate-table [85] (10) Recommended
+class ReqGetCollateTable(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 85\n" % (self.id))
+
+    def parse_response(self):
+        # --> HOLLERITH
+        return self.c.parse_string()
+
 # create-text [86] (10) Recommended
 class ReqCreateText(Request):
     def __init__(self, c, text, misc_info, aux_items = []):
         self.register(c)
-        raw_misc_info = misc_info.get_string()
+        raw_misc_info = misc_info.to_string()
         # FIXME: Ignoring aux-items for a while
         c.send_string("%d 86 %dH%s %s 0 { }\n" %
                       (self.id, len(text), text, raw_misc_info))
@@ -462,12 +681,11 @@ class ReqCreateText(Request):
         # --> Text-No
         return self.c.parse_int()
 
-
 # create-anonymous-text [87] (10) Recommended
 class ReqCreateAnonymousText(Request):
     def __init__(self, c, text, misc_info, aux_items = []):
         self.register(c)
-        raw_misc_info = misc_info.get_string()
+        raw_misc_info = misc_info.to_string()
         # FIXME: Ignoring aux-items for a while
         c.send_string("%d 87 %dH%s %s 0 { }\n" %
                       (self.id, len(text), text, raw_misc_info))
@@ -476,6 +694,33 @@ class ReqCreateAnonymousText(Request):
         # --> Text-No
         return self.c.parse_int()
 
+# create-conf [88] (10) Recommended
+class ReqCreateConf(Request):
+    def __init__(self, c, name, type, aux_items = []):
+        self.register(c)
+        # FIXME: Ignoring aux-items for a while
+        c.send_string("%d 88 %dH%s %s 0 { }\n" %
+                      (self.id, len(name), name,
+                       type.to_string()))
+        
+    def parse_response(self):
+        # --> Conf-No
+        return self.c.parse_int()
+
+# create-person [89] (10) Recommended
+class ReqCreatePerson(Request):
+    def __init__(self, c, name, passwd, flags, aux_items = []):
+        self.register(c)
+        # FIXME: Ignoring aux-items for a while
+        c.send_string("%d 89 %dH%s %dH%s %s 0 { }\n" %
+                      (self.id,
+                       len(name), name,
+                       len(passwd), passwd,
+                       flags.to_string()))
+        
+    def parse_response(self):
+        # --> Pers-No
+        return self.c.parse_int()
 
 # get-text-stat [90] (10) Recommended
 class ReqGetTextStat(Request):
@@ -498,6 +743,40 @@ class ReqGetConfStat(Request):
         # --> Conference
         return self.c.parse_object(Conference)
 
+# modify-text-info [92] (10) Recommended
+# FIXME!
+# modify-conf-info [93] (10) Recommended
+# FIXME!
+
+# get-info [94] (10) Recommended
+class ReqGetInfo(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 94\n" % (self.id))
+
+    def parse_response(self):
+        # --> Info
+        return self.c.parse_object(Info)
+
+# modify-system-info [95] (10) Recommended
+# FIXME!
+
+# query-predefined-aux-items [96] (10) Recommended
+class ReqQueryPredefinedAuxItems(Request):
+    def __init__(self, c):
+        self.register(c)
+        c.send_string("%d 96\n" % (self.id))
+
+    def parse_response(self):
+        # --> ARRAY INT32
+        return self.c.parse_array_of_int()
+
+# set-expire [97] (10) Experimental
+class ReqSetExpire(Request):
+    def __init__(self, c, conf_no, expire):
+        self.register(c)
+        c.send_string("%d 97 %d %d\n" % (self.id, conf_no, expire))
+
 # query-read-texts [98] (10) Recommended
 class ReqQueryReadTexts(Request):
     def __init__(self, c, person_no, conf_no):
@@ -507,6 +786,83 @@ class ReqQueryReadTexts(Request):
     def parse_response(self):
         # --> Membership
         return self.c.parse_object(Membership)
+
+
+# get-membership [99] (10) Recommended
+class ReqGetMembership(Request):
+    def __init__(self, c, person_no, first, no_of_confs, want_read_texts):
+        self.register(c)
+        c.send_string("%d 99 %d %d %d %d\n" % \
+                      (self.id, person_no,
+                       first, no_of_confs, want_read_texts))
+
+    def parse_response(self):
+        # --> ARRAY Membership
+        # FIXME: Cannot read result when want_read_texts = 0
+        return self.c.parse_array(Membership)
+
+# add-member [100] (10) Recommended
+class ReqAddMember(Request):
+    def __init__(self, c, conf_no, person_no, priority, where, type):
+        self.register(c)
+        c.send_string("%d 100 %d %d %d %d %s\n" % \
+                      (self.id, conf_no, person_no,
+                       priority, where, type.to_string()))
+
+# get-members [101] (10) Recommended
+class ReqGetMembers(Request):
+    def __init__(self, c, conf_no, first, no_of_members):
+        self.register(c)
+        c.send_string("%d 101 %d %d %d\n" % \
+                      (self.id, conf_no, first, no_of_members))
+
+    def parse_response(self):
+        # --> ARRAY Member
+        return self.c.parse_array(Member)
+
+# set-membership-type [102] (10) Recommended
+class ReqSetMembershipType(Request):
+    def __init__(self, c, person_no, conf_no, type):
+        self.register(c)
+        c.send_string("%d 102 %d %d %s\n" % \
+                      (self.id, person_no, conf_no, type.to_string()))
+
+# local-to-global [103] (10) Recommended
+class ReqLocalToGlobal(Request):
+    def __init__(self, c, conf_no, first_local_no, no_of_existing_texts):
+        self.register(c)
+        c.send_string("%d 103 %d %d %d\n" % \
+                      (self.id, conf_no, first_local_no, no_of_existing_texts))
+
+    def parse_response(self):
+        # --> Text-Mapping
+        return self.c.parse_object(TextMapping)
+
+# map-created-texts [104] (10) Recommended
+class ReqMapCreatedTexts(Request):
+    def __init__(self, c, author, first_local_no, no_of_existing_texts):
+        self.register(c)
+        c.send_string("%d 104 %d %d %d\n" % \
+                      (self.id, author, first_local_no, no_of_existing_texts))
+
+    def parse_response(self):
+        # --> Text-Mapping
+        return self.c.parse_object(TextMapping)
+
+# set-keep-commented [105] (10) Experimental
+class ReqSetKeepCommented(Request):
+    def __init__(self, c, conf_no, keep_commented):
+        self.register(c)
+        c.send_string("%d 105 %d %d\n" % (self.id, conf_no, keep_commented))
+
+# set-pers-flags [106] (10) Recommended
+
+class ReqSetPersFlags(Request):
+    def __init__(self, c, person_no, flags):
+        self.register(c)
+        c.send_string("%d 106 %d %s\n" % (self.id,
+                                        person_no,
+                                        flags.to_string()))
 
 #
 # Classes for asynchronous messages from the server are all
@@ -539,11 +895,26 @@ class AsyncLogin(AsyncMessage):
         self.person_no = c.parse_int()
         self.session_no = c.parse_int()
 
+# async-send-message [12] (1) Recommended
+class AsyncSendMessage(AsyncMessage):
+    def parse(self, c):
+        self.recipient = c.parse_int()
+        self.sender = c.parse_int()
+        self.message = c.parse_string()
+
+# async-logout (1) Recommended
+class AsyncLogout(AsyncMessage):
+    def parse(self, c):
+        self.person_no = c.parse_int()
+        self.session_no = c.parse_int()
+
 async_dict = {
     0: AsyncNewTextOld,
     7: AsyncSyncDB,
     8: AsyncLeaveConf,
     9: AsyncLogin,
+   12: AsyncSendMessage,
+   13: AsyncLogout,
     }
 
 #
@@ -690,7 +1061,7 @@ class CookedMiscInfo:
             else:
                 raise ProtocolError
 
-    def get_string(self):
+    def to_string(self):
         list = []
         for r in self.recipient_list + \
             self.comment_to_list + \
@@ -800,7 +1171,7 @@ class ConfType:
              self.reserved2,
              self.reserved3) = c.parse_bitstring(8)
 
-    def get_string(self):
+    def to_string(self):
         return "%d%d%d%d%d%d%d%d" % \
                (self.rd_prot,
                 self.original,
@@ -831,6 +1202,19 @@ class Conference:
         self.expire = c.parse_int()
         self.aux_items = c.parse_array(AuxItem)
 
+    def __repr__(self):
+        return "<Conference %s>" % self.name
+    
+class UConference:
+    def parse(self, c):
+        self.name = c.parse_string()
+        self.type = c.parse_object(ConfType)
+        self.highest_local_no = c.parse_int()
+        self.nice = c.parse_int()
+
+    def __repr__(self):
+        return "<UConference %s>" % self.name
+    
 # PERSON
 
 class PrivBits:
@@ -870,7 +1254,7 @@ class PrivBits:
          self.flg15,
          self.flg16) = c.parse_bitstring(16)
 
-    def get_string(self):
+    def to_string(self):
         return "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d" % \
                (self.wheel,
                 self.admin,
@@ -909,6 +1293,17 @@ class PersonalFlags:
          self.flg6,
          self.flg7,
          self.flg8) = c.parse_bitstring(8)
+
+    def to_string(self):
+        return "%d%d%d%d%d%d%d%d" % \
+               (self.unread_is_secret,
+                self.flg2,
+                self.flg3,
+                self.flg4,
+                self.flg5,
+                self.flg6,
+                self.flg7,
+                self.flg8)
 
 class Person:
     def parse(self, c):
@@ -953,6 +1348,17 @@ class MembershipType:
          self.reserved4,
          self.reserved5) = c.parse_bitstring(8)
 
+    def to_string(self):
+        return "%d%d%d%d%d%d%d%d" % \
+               (self.invitation,
+                self.passive,
+                self.secret,
+                self.reserved1,
+                self.reserved2,
+                self.reserved3,
+                self.reserved4,
+                self.reserved5)
+
 class Membership:
     def parse(self, c):
         self.position = c.parse_int()
@@ -965,6 +1371,46 @@ class Membership:
         self.added_at = c.parse_object(Time)
         self.type = c.parse_object(MembershipType)
 
+class Member:
+    def parse(self, c):
+        self.member  = c.parse_int()
+        self.added_by = c.parse_int()
+        self.added_at = c.parse_object(Time)
+        self.type = c.parse_object(MembershipType)
+
+# TEXT MAPPING
+
+class TextNumberPair:
+    def parse(self, c):
+        self.local_number = c.parse_int()
+        self.global_number = c.parse_int()
+    
+class TextMapping:
+    def parse(self, c):
+        self.range_begin = c.parse_int()
+        self.range_end = c.parse_int()
+        self.later_texts_exists = c.parse_int()
+        self.block_type = c.parse_int()
+
+        self.dict = {}
+        if self.block_type == 0:
+            # Sparse
+            print "[SPARSE TEXTMAPPING NOT TESTED]"
+            self.sparse_list = c.parse_array(TextNumberPair)
+            for tnp in self.sparse_list:
+                self.dict[tnp.local_number] = tnp.global_number
+                
+        elif self.block_type == 1:
+            # Dense
+            self.dense_first = c.parse_int()
+            self.dense_texts = c.parse_array_of_int()
+            local_number = self.dense_first
+            for global_number in self.dense_texts:
+                self.dict[local_number] = global_number
+                local_number = local_number + 1
+        else:
+            raise ProtocolError
+
 # MARK
 
 class Mark:
@@ -975,6 +1421,68 @@ class Mark:
     def __repr__(self):
         return "<Mark %d (%d)>" % (self.text_no, self.type)
 
+
+# SERVER INFORMATION
+
+class Info:
+    def __init__(self):
+        self.version = None
+        self.conf_pres_conf = None
+        self.pers_pres_conf = None
+        self.motd_conf = None
+        self.kom_news_conf = None
+        self.motd_of_lyskom = None
+        self.aux_item_list = []
+
+    def parse(self, c):
+        self.version = c.parse_int()
+        self.conf_pres_conf = c.parse_int()
+        self.pers_pres_conf = c.parse_int()
+        self.motd_conf = c.parse_int()
+        self.kom_news_conf = c.parse_int()
+        self.motd_of_lyskom = c.parse_int()
+        self.aux_item_list = c.parse_array(AuxItem)
+
+class VersionInfo:
+    def parse(self, c):
+        self.protocol_version = c.parse_int()
+        self.server_software = c.parse_string()
+        self.software_version = c.parse_string()
+
+    def __repr__(self):
+        return "<VersionInfo protocol %d by %s %s>" % \
+               (self.protocol_version,
+                self.server_software, self.software_version)
+
+# SESSION INFORMATION
+
+class SessionFlags:
+    def parse(self, c):
+        (self.invisible,
+         self.user_active_used,
+         self.user_absent,
+         self.reserved3,
+         self.reserved4,
+         self.reserved5,
+         self.reserved6,
+         self.reserved7) = c.parse_bitstring(8)
+
+class DynamicSessionInfo:
+    def parse(self, c):
+        self.session = c.parse_int()
+        self.person = c.parse_int()
+        self.working_conference = c.parse_int()
+        self.idle_time = c.parse_int()
+        self.flags = c.parse_object(SessionFlags)
+        self.what_am_i_doing  = c.parse_string()
+
+class StaticSessionInfo:
+    def parse(self, c):
+        self.username = c.parse_string()
+        self.hostname = c.parse_string()
+        self.ident_user = c.parse_string()
+        self.connection_time = c.parse_object(Time)
+     
 #
 # CLASS for a connection
 #
@@ -1142,6 +1650,10 @@ class Connection:
             if star <> "*": raise ProtocolError
         return res
 
+    def array_of_int_to_string(self, array):
+        return "%d { %s }" % (len(array),
+                             string.join(map(str, array), " "))
+                             
     # PARSING BITSTRINGS
     def parse_bitstring(self, len):
         res = []

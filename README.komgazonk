@@ -22,6 +22,11 @@ Kommandon som alla kan göra:
    4. 'Nästa':
       Talar om hur lång tid det är tills nästa ledtråd kommer att ges.
 
+   5. Man kan visa statistik mha kommandona 'statistik' och
+      'statistik <person>'. Den första varianten visar statistik
+      för dig själv och den andra tar en valfri person och visar
+      statistik för.
+
 Om du är Gazonk:
 
    1. Byt lösenord genom att skicka ett meddelande till mig med följande
@@ -43,6 +48,11 @@ Om du är Gazonk:
    5. Alla ledtrådar kan bytas ut, även sådana som redan givits, genom att
       skicka ett meddelande med 'byt ledtråd <ledtrådsnummer> <ny ledtråd>'
       som innehåll.
+
+   6. Under pågående omgång kan man som gazonk få reda på vad folk har
+      gissat på. Kommandot 'gissningar' ger alla gissningar för omgången
+      medan kommandot 'gissningar <nr>' ger alla gissningar för just den
+      ledtråden.
 
 Om du inte är Gazonk:
 

@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 # Locking version of shelve
-# $Id: lockingshelve.py,v 1.3 1999/10/13 12:37:33 kent Exp $
+# $Id: lockingshelve.py,v 1.4 2003/11/13 20:36:16 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 # NOTE! Just enough for the needs of komimportmail. Use with caution.
 

@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 # Handling of RFC1522 coding in mail headers
-# $Id: rfc1522.py,v 1.4 2001/06/25 21:43:46 kent Exp $
+# $Id: rfc1522.py,v 1.5 2003/11/13 20:36:16 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # NOTE! Just enough for the needs of komimportmail. Use with caution.

@@ -1,8 +1,8 @@
-#!/usr/local/bin/python
-# -*- python -*-
+#!/usr/bin/env python
+# -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.37 2003/09/19 12:16:22 forsberg Exp $
+# $Id: komimportmail,v 1.38 2003/11/13 20:36:16 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -24,7 +24,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.37 $"
+vc_revision = "$Revision: 1.38 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code

@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 # Support for reading, decoding and decomposing MIME messages.
-# $Id: mimereader.py,v 1.4 2001/01/15 22:04:00 kent Exp $
+# $Id: mimereader.py,v 1.5 2003/11/13 20:36:16 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # This module is primarily designed for use with komimportmail,

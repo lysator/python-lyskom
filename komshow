@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komshow,v 1.3 1999/10/09 14:18:16 kent Exp $
+# $Id: komshow,v 1.4 1999/10/14 10:23:19 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom
@@ -10,7 +10,7 @@ import getopt
 import string
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.3 $"
+vc_revision = "$Revision: 1.4 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -39,13 +39,13 @@ def print_raw(text):
 def print_empty():
     print
 
-def print_line(descr, data, replace = []):
+def print_line(descr, data, replace = [], max_title = 23):
     for (from_text, to_text) in replace:
         if data == from_text:
             data = to_text
             break
         
-    print "%-24s %s" % ( descr[:23] + ":", data)
+    print string.ljust(descr + ":", max_title)[:max_title] + " "  + str(data)
 
 def print_bool_lines(lines):
     for (text, value) in lines:
@@ -247,7 +247,26 @@ aux_item_names = {
     kom.AI_MX_MIME_FILE_NAME: "MX_MIME_FILE_NAME",
     }
 
-def show_aux_items(aux_items):
+def aux_item_description(tag_no):
+    if aux_item_names.has_key(tag_no):
+        return "%s (%d)" % (aux_item_names[tag_no], tag_no)
+    else:
+        return "%d" % tag_no
+    
+def cut_too_long_line(line):
+    modified = 0
+    nl_pos = string.find(line, "\n")
+    if nl_pos <> -1:
+        line = line[:nl_pos]
+        modified = 1
+    if len(line) > 70:
+        line = line[:70]
+        modified = 1
+    if modified:
+        line = line + "..."
+    return line
+
+def show_aux_items(aux_items, brief = 0):
     if len(aux_items) == 0:
         print_header("NO AUX ITEMS")
         print_empty()
@@ -257,27 +276,29 @@ def show_aux_items(aux_items):
     print_empty()
 
     for ai in aux_items:
-        print_line("Position", ai.aux_no)
-        if aux_item_names.has_key(ai.tag):
-            name = "%s (%d)" % (aux_item_names[ai.tag], ai.tag)
+        if brief:
+            line = "%s = %s" % (aux_item_description(ai.tag),
+                                ai.data)
+            line = cut_too_long_line(line)
+            print_line("%4d" % ai.aux_no, line, max_title = 4)
         else:
-            name = "%d" % ai.tag
-        print_line("Name", name)
-        print_line("Created", ai.created_at.to_date_and_time())
-        print_line("Created by", conn.conf_name(ai.creator,
-                                                default = "Person #%d",
-                                                include_no = 1))
-        print_line("Inherit limit", str(ai.inherit_limit))
-        print_line("Length of data", len(ai.data))
-        print_line("Data", ai.data) # FIXME: large/binary data
-        print_bool_lines([
-            ("Deleted",ai.flags.deleted),
-            ("Inherit",ai.flags.inherit),
-            ("Secret",ai.flags.secret),
-            ("Hide creator",ai.flags.hide_creator),
-            ("Dont garb",ai.flags.dont_garb),
-            ])
-        print_empty()
+            print_line("Position", ai.aux_no)
+            print_line("Name", aux_item_description(ai.tag))
+            print_line("Data", ai.data) # FIXME: large/binary data
+            print_line("Length of data", len(ai.data))
+            print_line("Created", ai.created_at.to_date_and_time())
+            print_line("Created by", conn.conf_name(ai.creator,
+                                                    default = "Person #%d",
+                                                    include_no = 1))
+            print_line("Inherit limit", str(ai.inherit_limit))
+            print_bool_lines([
+                ("Deleted",ai.flags.deleted),
+                ("Inherit",ai.flags.inherit),
+                ("Secret",ai.flags.secret),
+                ("Hide creator",ai.flags.hide_creator),
+                ("Dont garb",ai.flags.dont_garb),
+                ])
+            print_empty()
 
 recipient_type_names = {
     kom.MIR_TO: "To",
@@ -355,6 +376,15 @@ def show_text(text_no_str):
     text = kom.ReqGetText(conn, text_no, 0, ts.no_of_chars).response()
     print_raw(text)
     
+def show_text_aux_items(text_no_str):
+    try:
+        text_no = string.atoi(text_no_str)
+        ts = conn.textstats[text_no]
+    except:
+        error("%s - not found" % text_no_str, exit_now = 1)
+
+    show_aux_items(ts.aux_items, brief=1)
+
 # MAIN
 # Connect and log in
 
@@ -371,6 +401,7 @@ if conn is None:
 conf_name = None
 person = 0
 text_no = None
+only_brief_aux_items = 0
 
 options, arguments = getopt.getopt(param.get_arguments(),
                                    "",
@@ -378,6 +409,7 @@ options, arguments = getopt.getopt(param.get_arguments(),
                                        "conference=",
                                        "person=",
                                        "text=",
+                                       "only-brief-aux-items",
                                        ])
 for (opt, optarg) in options:
     if opt == "--conference":
@@ -391,6 +423,8 @@ for (opt, optarg) in options:
     elif opt == "--text":
         text_no = optarg
         conf_name = None
+    elif opt == "--only-brief-aux-items":
+        only_brief_aux_items = 1
     else:
         error("Option %s not handled (internal error)" % opt)
 
@@ -399,7 +433,10 @@ for (opt, optarg) in options:
 if conf_name:
     show_conference(conf_name, person)
 elif text_no:
-    show_text(text_no)
+    if not only_brief_aux_items:
+        show_text(text_no)
+    else:
+        show_text_aux_items(text_no)
 else:
     error("Choose function", exit_now=1)
 

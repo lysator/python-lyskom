@@ -2,7 +2,7 @@
 # -*- python -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.31 2002/05/05 12:32:26 kent Exp $
+# $Id: komimportmail,v 1.32 2002/05/30 18:42:29 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -24,7 +24,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.31 $"
+vc_revision = "$Revision: 1.32 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -214,6 +214,13 @@ def create_article_or_add_recipients(mail,
     if message_id is None or message_id == "<>":
         error_exit("No or empty message ID in mail", EX_DATAERR)
 
+    # We do not touch something exported by an exporter if we
+    # recognize it!
+    exported_article_no = exporter_id_to_article_no(message_id)
+    if exported_article_no is not None:
+        log("Not touching exported mail with Message-ID: %s" % message_id, LOG_INFO)
+        return
+    
     log("Handling mail with Message-ID: %s" % message_id, LOG_INFO)
 
     # Lookup Message-ID -> Text-No (fails if this is a new mail)
@@ -247,13 +254,20 @@ def create_article(mail, envelope_sender, envelope_recipients,
     
     parent_message_id = message_id_of_parent(mail.headers)
     if parent_message_id <> None:
-        parent_text_no = message_id_db.get_text_no_from_id(parent_message_id)
+        # If the parent seems to be an exported text, we will
+        # bypass "normal" handling!
+        parent_text_no = exporter_id_to_article_no(parent_message_id)
         if parent_text_no is not None:
-            log("Comment to %s (article %d)" % \
+            log("Comment to %s (exported article %d) " % \
                 (parent_message_id, parent_text_no), LOG_INFO)
         else:
-            log("Comment to %s (not present in KOM?)" % \
-                (parent_message_id), LOG_INFO)
+            parent_text_no = message_id_db.get_text_no_from_id(parent_message_id)
+            if parent_text_no is not None:
+                log("Comment to %s (article %d)" % \
+                    (parent_message_id, parent_text_no), LOG_INFO)
+            else:
+                log("Comment to %s (not present in KOM?)" % \
+                    (parent_message_id), LOG_INFO)
     else:
         # No threading
         parent_text_no = None
@@ -544,6 +558,7 @@ def createBodyHeaders(mailheaders, partheaders, top):
 # Also, replace too large bodies with an error indication.
 # Return text_no or throw exception.
 def send_to_kom(subject, body, misc_info, aux_items):
+    log("send_to_kom with aux_items: %s" % aux_items, LOG_DEBUG)
     attempting_to_send = 1
     while attempting_to_send:
         try:
@@ -574,6 +589,11 @@ def send_to_kom(subject, body, misc_info, aux_items):
                 # If we fail to remove the offending Misc-Info item,
                 # we raise an exception
                 raise kom.NoSuchText, bad_text_no # hope it was set
+
+        except AuxItemPermission, error_status:
+            # Debugging!
+            log("Bad aux-item is: %s" % error_status, LOG_ERROR)
+            raise
 
     return text_no
 
@@ -716,6 +736,18 @@ def last_message_id_in(header):
     pos_gt = string.rfind(header, ">")
     if -1 < pos_lt < pos_gt:
         return header[pos_lt:pos_gt+1] # Include "<" and ">" in ID
+    else:
+        return None
+
+# Try to convert a Message-ID from an exporter to 
+# an article number. Return that number or None
+# if there is no match (or the feature is not active)
+
+def exporter_id_to_article_no(id):
+    if EXPORTER_ID_REGEXP is None: return None
+    m = re.match(EXPORTER_ID_REGEXP, id)
+    if m:
+        return int(m.group(1))
     else:
         return None
 

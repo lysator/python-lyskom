@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.13 2001/09/10 10:42:23 kent Exp $
-# (C) 2000, 2001 Kent Engström. Released under GPL.
+# $Id: komconfstats,v 1.14 2002/01/21 22:47:01 kent Exp $
+# (C) 2000-2002 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
 # - Mer statistik
@@ -30,13 +30,13 @@ import getopt
 import string
 import re
 import time
-import math
 import whrandom
 
 import jddate # From the lyspython collection
+import tabulator
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.13 $"
+vc_revision = "$Revision: 1.14 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -72,14 +72,6 @@ def split_text_into_words(text):
                              re.split("[^a-zåäö-]+", text)))
     return words
 
-# Handle counts and nouns
-def get_count_with_noun(count, singularis, pluralis = None):
-    if pluralis is None or count == 1:
-        return "%d %s" % (count, singularis)
-    else:
-        return "%d %s" % (count, pluralis)
-
-
 # Palindrome check
 def is_palindrome(str):
     l1 = list(str)
@@ -87,160 +79,16 @@ def is_palindrome(str):
     l2.reverse()
     return l1 == l2
 
-#
-# Main classes for recording information, and their specializations.
-#
-# Tabulator is the most central class of them all. For a simple report
-# such as "Articles per author", there is a single Tabulator (of
-# subclass ConfNameTabulator) to handle the report. In its dictionary,
-# each author gets an Entry that counts the texts written by him or her.
-#
-# For a two-dimensional report such as "Articles per subject line and
-# author", the top-level Tabulator has a dictionary where each subject
-# line gets a Tabulator (a ConfNameTabulator to be precise) of its
-# own. Each such Tabulator has its own dictionary where the different
-# authors using that subject lines get their Entries stored.
-#
-# The normal Tabulator class and its specializations produce reports
-# sorted on the count (in descending order). The Histogram class and
-# its specializations instead sort on the key, include lines where
-# count is zero and show a bar of stars to visualize the count.
-#
-# New subclasses of Tabulator and Histogram should only be derived to
-# handle large changes such as different key formats (or totally new
-# forms of tabulation). Smaller customizations, such as titles,
-# information on what kind of things that are counted, limits on the
-# size of a report, etc., should be handled by the TabulatorProperties
-# class. For each report, there is a chain of TabulatorProperties objects
-# (just like a single-linked list in C or Pascal) with one object 
-# for each level of the report.
-#
-# Now, read the code, and join me again when its time to review the
-# Report class.
 
-class Entry:
-    def __init__(self, key, properties_ignored = None):
-        self.key = key
-        self.count = 0
+# Base classes and useful comments have been refactored into tabulator.py
 
-    def tabulate(self, sub_keys):
-        self.count = self.count + 1 
-
-    def is_empty(self):
-        return self.count == 0
-
-    def report(self, indent, levels):
-        # This is kind of faked, but it makes the code simpler...
-        return []
-       
-class Tabulator(Entry):
-    def __init__(self, key = None, properties = None):
-        Entry.__init__(self, key)
-        self.dict = {}  # Contains Entries/Tabulators
-        if properties is None:
-            self.prop = TabulatorProperties(self.__class__)
-        else:
-            self.prop = properties
-            
-    def tabulate(self, keys):
-        self.count = self.count + 1
-        if keys == []: return
-        key = self.data_to_key(keys[0])
-            
-        if not self.dict.has_key(key):
-            if self.prop.next is None:
-                SubClass = Entry
-            else:
-                SubClass = self.prop.next.subclass
-            self.dict[key] = SubClass(key, self.prop.next)
-        self.dict[key].tabulate(keys[1:])
-
-    def report(self, indent = 0, levels = None):
-        # This method is common for both normal tabulators and histograms
-
-        # No report if we are past the max level
-        if indent >= levels: return []
-        
-        l = [] # Collect lines of text using this one
-
-        if indent == 0:
-            # Only the top level should have a title
-            l.append("%s (%s)" % (self.get_title(levels),
-                                  self.prop.get_count_with_noun(self.count)))
-            l.append("")
-            self.report_extra_header(l)
-
-        # Now, do the real work. Notice how "l" will be modified by
-        # the addition of the report body lines.
-
-        self.report_body(l, indent, levels)
-
-        return l
-
-    def get_title(self, levels = None):
-        return self.prop.get_title(levels)
-
-    def report_body(self, l, indent, levels):
-        # Specific for tabulators, overridden by histograms
-        
-        istr = "      " * indent # Six spaces for each level of indentation
-        sortlist = map(lambda x, d=self.dict: (-d[x].count, d[x]),
-                       self.dict.keys())
-        sortlist.sort()
-        pos = 1
-        last_occ = None 
-        bailed_out = 0 # This will be set if we break because of max_displayed
-        for (occ, entry) in sortlist:
-            occ = - occ
-            key = self.key_to_display(entry.key)
-
-            if self.prop.max_displayed is not None and \
-               pos > self.prop.max_displayed:
-                bailed_out = 1
-                break
-
-            if occ <> last_occ:
-                pos_str = str(pos)
-            else:
-                pos_str = '"'
-            l.append("%s%3s) %s (%d)" % (istr, pos_str, key, occ))
-            l.extend(entry.report(indent = indent + 1, levels = levels))
-            pos = pos + 1
-            last_occ = occ
-
-        if bailed_out:
-            l.append("%s     /%s/" % \
-                     (istr,
-                      get_count_with_noun(len(sortlist) -
-                                          self.prop.max_displayed,
-                                          "utelämnad rad","utelämnade rader")
-                      ))
-                               
-        l.append("")
-        
-    # Override these methods if needed
-
-    def report_extra_header(self, l):
-        return
-
-    def data_to_key(self, data):
-        # This is how the data sent in will be transformed before
-        # being used as a key.
-        return data
-
-    def key_to_display(self, key):
-        # This is how the stored key will be transformed before
-        # being displayed.
-        return key
-
-
-class ConfNameTabulator(Tabulator):
+class ConfNameTabulator(tabulator.Tabulator):
     # Stores conference numbers but displays them as names.
 
     def key_to_display(self, pers_no):
         return conn.conf_name(pers_no)
 
-class CommentTabulator(Tabulator):
+class CommentTabulator(tabulator.Tabulator):
     # Stores pairs of conference numbers but displays them as names.
     
     def key_to_display(self, pers_tuple):
@@ -248,7 +96,7 @@ class CommentTabulator(Tabulator):
                conn.conf_name(pers_tuple[1])
 
 re_zero = re.compile(".*[1-9]([0-9]+)$")
-class EvenNumberTabulator(Tabulator):
+class EvenNumberTabulator(tabulator.Tabulator):
     # Stores the number of zero digits at the end of an article
     # number.
     
@@ -259,147 +107,36 @@ class EvenNumberTabulator(Tabulator):
     def key_to_display(self, x):
         return "Jämna 1" + "0" * (-x) + "-tal"
 
-class WordTabulator(Tabulator):
+class WordTabulator(tabulator.Tabulator):
     def report_extra_header(self, l):
         r = whrandom.choice(self.dict.keys())
         l.append("Denna rapports slumpmässigt valda ord är:")
         l.append('    "%s", använt %s' % (r,
-                                        get_count_with_noun(self.dict[r].count,
-                                                            "gång","gånger")))
+                                          tabulator.get_count_with_noun(self.dict[r].count,
+                                                                        "gång","gånger")))
         l.append("")
 
-class Histogram(Tabulator):
-    def report_body(self, l, indent, levels):
-        # Specific for histogram
-        
-        istr = "      " * indent # Six spaces for each level of indentation
-
-        max_len = 50
-
-        # Find minimum and maximum key, as well as maximum count
-        # and maxmimum size of a cooked key
-
-        min_key = None
-        max_key = None
-        max_occ = 0
-        max_key_size = 0
-        for (key,entry) in self.dict.items():
-            occ = entry.count
-            
-            if min_key is None:
-                min_key = key
-            else:
-                min_key = min(min_key, key)
-
-            if max_key is None:
-                max_key = key
-            else:
-                max_key = max(max_key, key)
-
-            max_occ = max(max_occ, occ)
-            max_key_size = max(max_key_size, len(self.key_to_display(key)))
-
-
-        # The properties may override this, but only to extend it
-        if self.prop.histogram_begin is not None and \
-           self.prop.histogram_begin < min_key:
-            min_key = self.prop.histogram_begin
-
-        if self.prop.histogram_end is not None and \
-           self.prop.histogram_end > max_key:
-            max_key = self.prop.histogram_end
-
-        # If we still have no limits, do not
-        # generate anything more
-        if min_key is None or max_key is None:
-            return
-        
-        if max_occ == 0:
-            divisor = 1
-        else:
-            divisor = (max_occ-1)/max_len+1
-
-        # range(min_key, max_key+1) is not used, as this requires that the
-        # type used as key has an __int__ method.
-        raw_key = min_key
-        while raw_key <= max_key:
-            if self.dict.has_key(raw_key):
-                entry = self.dict[raw_key]
-                occ = entry.count
-            else:
-                entry = None
-                occ = 0
-            key = self.key_to_display(raw_key)
-            bar_len = occ / divisor
-            if divisor > 1:
-                bar_len = bar_len + 1
-            
-            if occ == 0 and self.prop.histogram_hide_zero:
-                l.append("%s     %-*s:" % (istr, max_key_size, key))
-            else:
-                l.append("%s     %-*s:%5d %s" % (istr, max_key_size, key, occ, "*" * bar_len))
-
-            if entry is not None:
-                l.extend(entry.report(indent = indent + 1, levels = levels))
-
-            raw_key = raw_key + 1
-            
-        l.append("")
-
-    def key_to_display(self, key):
-        return str(key)
-
-class HourHistogram(Histogram):
+class HourHistogram(tabulator.Histogram):
     def key_to_display(self, hour):
         return "%02d" % hour
 
 swedish_weekdays = ["Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag","Söndag"]
-class WeekdayHistogram(Histogram):
+class WeekdayHistogram(tabulator.Histogram):
     def key_to_display(self, wd):
         return swedish_weekdays[wd]
     
-class DateHistogram(Histogram):
+class DateHistogram(tabulator.Histogram):
     def key_to_display(self, jd):
         (y, w, d) = jd.GetYWD()
         return jd.GetString_YYYY_MM_DD() + " " + \
                swedish_weekdays[d-1][:2]
 
-class LogHistogram(Histogram):
-    # Virtual --- use a subclass!
-    def __init__(self, key = None, properties = None):
-        self.logoflogbase = math.log(self.logbase)
-        Histogram.__init__(self, key, properties) 
-    
-    def key_to_display(self, x):
-        return "%6d -" % (self.logbase**x)
-
-    def data_to_key(self, x):
-        if x == 0: x = 1
-        return int(math.log(x)/self.logoflogbase)
-
-class SizeLogHistogram(LogHistogram):
+class SizeLogHistogram(tabulator.LogHistogram):
     def __init__(self, key = None, properties = None):
         self.logbase = 2
-        LogHistogram.__init__(self, key, properties) 
+        tabulator.LogHistogram.__init__(self, key, properties) 
 
-class BinHistogram(Histogram):
-    # Virtual --- use a subclass!
-    def __init__(self, key = None, properties = None):
-        Histogram.__init__(self, key, properties)
-
-    def key_to_display(self, x):
-        return self.bins[x][1]
-
-    def data_to_key(self, x):
-        index = 0
-        slot = index
-        for (min, name) in self.bins:
-            if x > min:
-                slot = index
-            index = index + 1
-        return slot
-    
-class TimeBinHistogram(BinHistogram):
+class TimeBinHistogram(tabulator.BinHistogram):
     def __init__(self, key = None, properties = None):
         self.bins = [(      0, " 0-15 s"),
                      (     15, "15-30 s"),
@@ -422,78 +159,8 @@ class TimeBinHistogram(BinHistogram):
                      (1209600, " 2- 4 w"),
                      (2419200, " 4-   w"),
                      ]
-        BinHistogram.__init__(self, key, properties)
+        tabulator.BinHistogram.__init__(self, key, properties)
 
-class TabulatorProperties:
-    def __init__(self, subclass):
-        self.next = None
-        self.subclass = subclass
-        self.title = "Rubrik saknas"
-        self.what = "gazonk"
-        self.singularis = "inlägg"
-        self.pluralis = None
-        self.max_displayed = None
-        self.histogram_begin = None
-        self.histogram_end = None
-        self.histogram_hide_zero = 0
-        
-    def add_sub(self, subclass):
-        if self.next is not None:
-            raise ValueError, "add_sub called twice"
-        self.next = TabulatorProperties(subclass)
-        return self.next
-    
-    def set_histogram_range(self, begin = None, end = None):
-        self.histogram_begin = begin
-        self.histogram_end =   end
-        
-    def get_count_with_noun(self, count):
-        return get_count_with_noun(count, self.singularis, self.pluralis)
-
-    def get_title(self, levels):
-        # We need to collect the "what" field from the chain of
-        # TabulatorProperties:
-        whatlist = []
-        p = self
-        while p is not None:
-            whatlist.append(p.what)
-            p = p.next
-        if levels is not None:
-            whatlist = whatlist[:levels]
-            
-        return self.title + ": " + string.join(whatlist, ", ")
-
-#
-# REPORT CLASS
-#
-# Thanks for tuning in to the comment channel again. I promised to
-# explain the purpose of this class above. This class is
-# able to encapsulate a Tabulator (or one of its subclasses)
-# well enough to fool ConfStats.report(). Ask a real OO junkie
-# if you really want to know the name of this pattern :-)
-#
-# The reason for inventing this class is to be able to use the same
-# Tabulator to report more than once, with different levels of
-# subtabulation. In that way, the same tabulator can produce
-# both the "Articles per author" and "Articles per author, subject
-# line" reports (but not the "Articles per subject line" or
-# "Articles per subject line, author" reports).
-#
-
-class Report:
-    def __init__(self, tabulator, levels = None):
-        self.tabulator = tabulator
-        self.levels = levels
-
-    def is_empty(self):
-        return self.tabulator.is_empty()
-    
-    def report(self):
-        return self.tabulator.report(levels = self.levels)        
-
-    def get_title(self):
-        return self.tabulator.get_title(levels = self.levels)        
-        
 #
 # CONFSTATS CLASS
 #
@@ -533,78 +200,87 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.at = ConfNameTabulator()
         self.at.prop.what = "författare"
         self.at.prop.title = "Inlägg"
-        sub = self.at.prop.add_sub(Tabulator)
+        self.at.prop.singularis = "inlägg"
+        sub = self.at.prop.add_sub(tabulator.Tabulator)
         sub.what = "ärenderad"
         sub.max_displayed = 10
-        self.add_report(Report(self.at, 1))
+        self.add_report(tabulator.Report(self.at, 1))
         self.add_report(self.at)
         
-        self.st = Tabulator()
+        self.st = tabulator.Tabulator()
         self.st.prop.title = "Inlägg"
+        self.st.prop.singularis = "inlägg"
         self.st.prop.what = "ärenderad"
         self.st.prop.max_displayed = 100
         sub = self.st.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
-        self.add_report(Report(self.st, 1))
+        self.add_report(tabulator.Report(self.st, 1))
         self.add_report(self.st)
      
         self.gat = ConfNameTabulator()
         self.gat.prop.what = "författare"
         self.gat.prop.title = "Inlägg av gästförfattare"
-        sub = self.gat.prop.add_sub(Tabulator)
+        self.gat.prop.singularis = "inlägg"
+        sub = self.gat.prop.add_sub(tabulator.Tabulator)
         sub.what = "ärenderad"
         self.add_report(self.gat)
       
         self.oat = ConfNameTabulator()
         self.oat.prop.what = "författare"
         self.oat.prop.title = "Originalinlägg"
-        sub = self.oat.prop.add_sub(Tabulator)
+        self.oat.prop.singularis = "inlägg"
+        sub = self.oat.prop.add_sub(tabulator.Tabulator)
         sub.what = "ärenderad"
-        sub = sub.add_sub(Tabulator)
+        sub = sub.add_sub(tabulator.Tabulator)
         sub.what = "inläggsnummer"
         self.add_report(self.oat)
       
         self.sat = ConfNameTabulator()
         self.sat.prop.title = "Kommentarer med ändrad ärenderad"
+        self.sat.prop.singularis = "inlägg"
         self.sat.prop.what = "författare"
-        sub = self.sat.prop.add_sub(Tabulator)
+        sub = self.sat.prop.add_sub(tabulator.Tabulator)
         sub.what = "gammal ärenderad"
-        sub = sub.add_sub(Tabulator)
+        sub = sub.add_sub(tabulator.Tabulator)
         sub.what = "ny ärenderad"        
         self.add_report(self.sat)
       
         self.mat = ConfNameTabulator()
         self.mat.prop.title = "Kommentarer till texter i andra möten"
+        self.mat.prop.singularis = "inlägg"
         self.mat.prop.what = "författare"
         sub = self.mat.prop.add_sub(ConfNameTabulator)
         sub.what = "möte"
-        sub = sub.add_sub(Tabulator)
+        sub = sub.add_sub(tabulator.Tabulator)
         sub.what = "ärenderad"
-        # self.add_report(Report(self.mat, levels = 2))
+        # self.add_report(tabulator.Report(self.mat, levels = 2))
         self.add_report(self.mat)
       
         self.rmat = ConfNameTabulator()
         self.rmat.prop.title = "Kommentarer till texter i andra möten"
+        self.rmat.prop.singularis = "inlägg"
         self.rmat.prop.what = "möte"
         sub = self.rmat.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
-        sub = sub.add_sub(Tabulator)
+        sub = sub.add_sub(tabulator.Tabulator)
         sub.what = "ärenderad"
         self.add_report(self.rmat)
       
         self.crt = ConfNameTabulator()
         self.crt.prop.title = "Inlägg i andra möten också"
+        self.crt.prop.singularis = "inlägg"
         self.crt.prop.what = "möte"
-        sub = self.crt.prop.add_sub(Tabulator)
+        sub = self.crt.prop.add_sub(tabulator.Tabulator)
         sub.what = "ärenderad"
         sub = sub.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
         self.add_report(self.crt)
 
-        self.rcrt = Tabulator()
+        self.rcrt = tabulator.Tabulator()
         self.rcrt.prop.title = "Inlägg i andra möten också"
+        self.rcrt.prop.singularis = "inlägg"
         self.rcrt.prop.what = "ärenderad"
         sub = self.rcrt.prop.add_sub(ConfNameTabulator)
         sub.what = "möte"
@@ -615,8 +291,9 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
 
         self.prt = ConfNameTabulator()
         self.prt.prop.title = "Inlägg mottagna av personer"
+        self.prt.prop.singularis = "inlägg"
         self.prt.prop.what = "person"
-        sub = self.prt.prop.add_sub(Tabulator)
+        sub = self.prt.prop.add_sub(tabulator.Tabulator)
         sub.what = "ärenderad"
         sub.max_displayed = 50
         sub = sub.add_sub(ConfNameTabulator)
@@ -624,8 +301,9 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub.max_displayed = 10
         self.add_report(self.prt)
 
-        self.rprt = Tabulator()
+        self.rprt = tabulator.Tabulator()
         self.rprt.prop.title = "Inlägg mottagna av personer"
+        self.rprt.prop.singularis = "inlägg"
         self.rprt.prop.what = "ärenderad"
         sub = self.rprt.prop.add_sub(ConfNameTabulator)
         sub.what = "person"
@@ -636,46 +314,55 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
 
         self.fnat = ConfNameTabulator()
         self.fnat.prop.title = "Fotnoter"
+        self.fnat.prop.singularis = "inlägg"
         self.fnat.prop.what = "författare"
         self.add_report(self.fnat)
       
         self.scat = ConfNameTabulator()
         self.scat.prop.title = "Kommentarer till egna inlägg exkl. fotnoter"
+        self.scat.prop.singularis = "inlägg"
         self.scat.prop.what = "författare"
         self.add_report(self.scat)
       
         self.cat0 = ConfNameTabulator()
         self.cat0.prop.title = "Inlägg utan kommentarer"
+        self.cat0.prop.singularis = "inlägg"
         self.cat0.prop.what = "författare"
         self.add_report(self.cat0)
       
         self.cat1 = ConfNameTabulator()
         self.cat1.prop.title = "Inlägg med minst 1 kommentar"
+        self.cat1.prop.singularis = "inlägg"
         self.cat1.prop.what = "författare"
         self.add_report(self.cat1)
 
         self.cat2 = ConfNameTabulator()
         self.cat2.prop.title = "Inlägg med minst 2 kommentarer"
+        self.cat2.prop.singularis = "inlägg"
         self.cat2.prop.what = "författare"
         self.add_report(self.cat2)
 
         self.cat3 = ConfNameTabulator()
         self.cat3.prop.title = "Inlägg med minst 3 kommentarer"
+        self.cat3.prop.singularis = "inlägg"
         self.cat3.prop.what = "författare"
         self.add_report(self.cat3)
 
         self.cat4 = ConfNameTabulator()
         self.cat4.prop.title = "Inlägg med minst 4 kommentarer"
+        self.cat4.prop.singularis = "inlägg"
         self.cat4.prop.what = "författare"
         self.add_report(self.cat4)
 
         self.cat5 = ConfNameTabulator()
         self.cat5.prop.title = "Inlägg med minst 5 kommentarer"
+        self.cat5.prop.singularis = "inlägg"
         self.cat5.prop.what = "författare"
         self.add_report(self.cat5)
 
         self.cat10 = ConfNameTabulator()
         self.cat10.prop.title = "Inlägg med minst 10 kommentarer"
+        self.cat10.prop.singularis = "inlägg"
         self.cat10.prop.what = "författare"
         self.add_report(self.cat10)
 
@@ -717,35 +404,57 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.nct.prop.max_displayed = 50
         self.add_report(self.nct)
 
-        self.vt = Tabulator()
+        self.vt = tabulator.Tabulator()
         self.vt.prop.title = "Inlägg"
+        self.vt.prop.singularis = "inlägg"
         self.vt.prop.what = "klient"
-        sub = self.vt.prop.add_sub(Tabulator)
+        sub = self.vt.prop.add_sub(tabulator.Tabulator)
         sub.what = "version"
         self.add_report(self.vt)
      
-        self.ctt = Tabulator()
+        self.ctt = tabulator.Tabulator()
         self.ctt.prop.title = "Inlägg"
+        self.ctt.prop.singularis = "inlägg"
         self.ctt.prop.what = "content-type"
-        sub = self.ctt.prop.add_sub(Tabulator)
+        sub = self.ctt.prop.add_sub(tabulator.Tabulator)
         sub.what = "options"
         self.add_report(self.ctt)
      
         self.ent = EvenNumberTabulator()
         self.ent.prop.title = "Jubelinlägg"
+        self.ent.prop.singularis = "inlägg"
         self.ent.prop.what = "jubeltyp"
         sub = self.ent.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
-        sub = sub.add_sub(Tabulator)
+        sub = sub.add_sub(tabulator.Tabulator)
         sub.what = "inläggsnummer"
         self.add_report(self.ent)
 
+        self.lent = EvenNumberTabulator()
+        self.lent.prop.title = "Lokaljubelinlägg"
+        self.lent.prop.singularis = "inlägg"
+        self.lent.prop.what = "jubeltyp"
+        sub = self.lent.prop.add_sub(ConfNameTabulator)
+        sub.what = "författare"
+        sub = sub.add_sub(tabulator.Tabulator)
+        sub.what = "inläggsnummer"
+        self.add_report(self.lent)
+
         self.pal = ConfNameTabulator()
         self.pal.prop.title = "Palindromnummerinlägg"
+        self.pal.prop.singularis = "inlägg"
         self.pal.prop.what = "författare"
-        sub = self.pal.prop.add_sub(Tabulator)
+        sub = self.pal.prop.add_sub(tabulator.Tabulator)
         sub.what = "inläggsnummer"
         self.add_report(self.pal)
+     
+        self.lpal = ConfNameTabulator()
+        self.lpal.prop.title = "Lokalpalindromnummerinlägg"
+        self.lpal.prop.singularis = "inlägg"
+        self.lpal.prop.what = "författare"
+        sub = self.lpal.prop.add_sub(tabulator.Tabulator)
+        sub.what = "inläggsnummer"
+        self.add_report(self.lpal)
      
         if self.full_text:
             self.wt = WordTabulator()
@@ -759,74 +468,82 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         
         self.hh = HourHistogram()
         self.hh.prop.title = "Inlägg"
+        self.hh.prop.singularis = "inlägg"
         self.hh.prop.what = "timme på dygnet"
         self.hh.prop.set_histogram_range(0, 23)
         self.hh.prop.histogram_hide_zero = 1
         sub = self.hh.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 5
-        self.add_report(Report(self.hh, 1))
+        self.add_report(tabulator.Report(self.hh, 1))
         self.add_report(self.hh)
             
         self.wh = WeekdayHistogram()
         self.wh.prop.title = "Inlägg"
+        self.wh.prop.singularis = "inlägg"
         self.wh.prop.what = "veckodag"
         self.wh.prop.set_histogram_range(0,6)
         self.wh.prop.histogram_hide_zero = 1
         sub = self.wh.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 5
-        self.add_report(Report(self.wh, 1))
+        self.add_report(tabulator.Report(self.wh, 1))
         self.add_report(self.wh)
             
         self.dh = DateHistogram()
         self.dh.prop.title = "Inlägg"
+        self.dh.prop.singularis = "inlägg"
         self.dh.prop.what = "datum"
         self.dh.prop.histogram_hide_zero = 1
         sub = self.dh.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 5
-        self.add_report(Report(self.dh, 1))
+        self.add_report(tabulator.Report(self.dh, 1))
         self.add_report(self.dh)
             
-        self.dst = Tabulator()
+        self.dst = tabulator.Tabulator()
         self.dst.prop.title = "Inlägg"
+        self.dst.prop.singularis = "inlägg"
         self.dst.prop.what = "ärenderad"
         self.dst.prop.max_displayed = 20
         sub = self.dst.prop.add_sub(DateHistogram)
         sub.what = "datum"
         self.add_report(self.dst)
      
-        self.kh = Histogram()
+        self.kh = tabulator.Histogram()
         self.kh.prop.title = "Inlägg"
+        self.kh.prop.singularis = "inlägg"
         self.kh.prop.what = "antal kommentarer"
         self.kh.prop.histogram_hide_zero = 1
         self.add_report(self.kh)
             
         self.csh = SizeLogHistogram()
         self.csh.prop.title = "Inlägg"
+        self.csh.prop.singularis = "inlägg"
         self.csh.prop.what = "antal tecken"
         self.csh.prop.histogram_hide_zero = 1
         self.add_report(self.csh)
             
         self.lsh = SizeLogHistogram()
         self.lsh.prop.title = "Inlägg"
+        self.lsh.prop.singularis = "inlägg"
         self.lsh.prop.what = "antal rader"
         self.lsh.prop.histogram_hide_zero = 1
         sub = self.lsh.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 5
-        self.add_report(Report(self.lsh, 1))
+        self.add_report(tabulator.Report(self.lsh, 1))
         self.add_report(self.lsh)
             
         self.ah = TimeBinHistogram()
         self.ah.prop.title = "Kommentarer"
+        self.ah.prop.singularis = "inlägg"
         self.ah.prop.what = "antal sekunder sedan det kommenterade"
         self.ah.prop.histogram_hide_zero = 1
         sub = self.ah.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 5
-        self.add_report(Report(self.ah, 1))
+        self.add_report(tabulator.Report(self.ah, 1))
         self.add_report(self.ah)
 
         # Stop! The declaration of tabulators end here. Below
@@ -873,9 +590,16 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         if numstr[-3:] == "000":
             self.ent.tabulate([numstr, ts.author, numstr])
 
+        lnumstr = str(loc_no)
+        if lnumstr[-3:] == "000":
+            self.lent.tabulate([lnumstr, ts.author, lnumstr + ": " + numstr])
+
         # Palindromes
         if is_palindrome(numstr):
             self.pal.tabulate([ts.author, numstr])
+
+        if is_palindrome(lnumstr):
+            self.lpal.tabulate([ts.author, lnumstr + ": " + numstr])
 
         # Tabulate things that depend on the recipient list
         for mir in ts.misc_info.recipient_list:

@@ -1126,8 +1126,6 @@ if os.path.exists(DUMPFILE):
 else:
     gaz = Gazonk();
 
-sys.exit(0);
-
 # Koppla upp sig, logga in och annat kul
 log("Kopplar upp")
 conn = kom.CachedConnection(KOMSERVER, port = KOMPORT)

@@ -1,6 +1,7 @@
 #!/usr/bin/python
+# -*- coding: iso-8859-1 -*-
 # Collect some word statistics about a conference
-# $Id: komconfwords,v 1.17 2002/11/07 18:31:23 kent Exp $
+# $Id: komconfwords,v 1.18 2004/10/03 13:17:28 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -15,17 +16,16 @@ import string
 import re
 import time
 import math
-import whrandom
 import os
 import cPickle
 import cStringIO
-import whrandom
+import random
 
 # Needs jddate from the lyspython collection
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.17 $"
+vc_revision = "$Revision: 1.18 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -83,10 +83,10 @@ def safe_div(format, p, q, percent = 0):
 def randsent(words, min_words=3, max_words=7, max_chars = None):
     sentlist = []
     for j in range(0,10):
-        for i in range(0,whrandom.randint(min_words,max_words)):
-            sentlist.append(whrandom.choice(words))
+        for i in range(0,random.randint(min_words,max_words)):
+            sentlist.append(random.choice(words))
             sentence = string.capitalize(string.join(sentlist, " ") + ".")
-        if max_words is None or len(sentence) <= max_chars:
+        if max_words is not None or len(sentence) <= max_chars:
             break
     if max_chars is not None:
         sentence = sentence[:max_chars]
@@ -232,7 +232,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
             r.write(" Pos Antal  Nytt ord                            Först använt av/i\n")
             r.write("-"*73 + "\n")
     
-            sortlist = map(lambda x: (-x[1], whrandom.randint(1,1000), x[0]), self.new_words.items())
+            sortlist = map(lambda x: (-x[1], random.randint(1,1000), x[0]), self.new_words.items())
             sortlist.sort()
             pos = 1
             last_occ = None 
@@ -283,7 +283,7 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
 
         wot = "tomt"
         if len(self.new_words) > 0:
-            wot = whrandom.choice(self.new_words.keys())
+            wot = random.choice(self.new_words.keys())
             r.write("Dagens utvalda nya ord är: %s\n" % wot)
             r.write("\n")
                     

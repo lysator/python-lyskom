@@ -198,14 +198,14 @@ class Gazonk:
         self.current_time = time.time()
 
     def create_guess_list_string(self, max_nr = MAX_ENTRIES_GUESS_LIST):
-        message = ""
+        message = "Gissningar per ledtråd:\n\n"
         i = 0
         pcg_table = {}
         for gdb in self.per_clue_guesses:
             i += 1
-            message += print_clue(self.clues[i-1], i) + "\n"
+            message += print_clue(self.clues[i-1], i) + "\n\n"
             message += indent(gdb.create_string(MAX_ENTRIES_GUESS_LIST),7)
-            message += "\n"
+            message += "\n\n"
 
             glist = zip(gdb.db.keys(), gdb.db.values())
             for (guess, amount) in glist:

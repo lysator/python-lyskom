@@ -1,7 +1,7 @@
 #!/usr/bin/python-1.5.2
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.18 1999/10/22 08:51:09 kent Exp $
+# $Id: komimportmail,v 1.19 2000/03/28 19:36:12 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -22,7 +22,7 @@ import re
 import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.18 $"
+vc_revision = "$Revision: 1.19 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -402,6 +402,12 @@ def create_article_part(mail,
 
         for (display_name, addr_spec) in \
             mail.headers.getaddrlist(header_name):
+            # Replace None with an empty string
+            if display_name is None:
+                display_name = ""
+            if addr_spec is None:
+                addr_spec = ""
+
             # Remove outer double qoutes and RFC1522 coding if
             # present in the display name.                
             if display_name[0:1] == '"' and display_name[-1:0] == '"':

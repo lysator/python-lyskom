@@ -92,6 +92,8 @@ HACKER SUMMARY
 
 - topmarkings.py collects statistics about Markings on texts.
 
+- invite-all adds all users in the system to a certain conference. 
+
 
 COPYRIGHT
 

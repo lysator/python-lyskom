@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.27 2002/06/16 12:08:54 astrand Exp $
+# $Id: kom.py,v 1.28 2002/06/22 17:13:43 astrand Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -2161,7 +2161,7 @@ class CachedConnection(Connection):
         if name[:1] == "#":
             # Numerical case
             try:
-                no = string.atoi(name[1:]) # Exception if not int
+                no = int(name[1:]) # Exception if not int
                 type = self.uconferences[no].type # Exception if not found
                 name = self.uconferences[no].name
                 if (want_pers and type.letterbox) or \

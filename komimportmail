@@ -1,7 +1,7 @@
 #!/sw/local/bin/python
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.24 2001/01/15 22:03:59 kent Exp $
+# $Id: komimportmail,v 1.25 2001/11/16 15:10:27 bellman Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -22,7 +22,7 @@ import re
 import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.24 $"
+vc_revision = "$Revision: 1.25 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -502,7 +502,8 @@ def create_article_part(mail,
     # Try to create article part
     try:
         if 1 == with_hdr:
-            part.data = createBodyHeaders(part.headers) + part.data
+            part.data = (createBodyHeaders(mail.headers, part.headers, top)
+			 + part.data)
         text_no = send_to_kom(subject, part.data, misc_info, aux_items)
     except:
         error_exit("Failed to create article (error %s)" % sys.exc_info()[0],
@@ -510,16 +511,17 @@ def create_article_part(mail,
                           
     return text_no
 
-def createBodyHeaders(headers):
+def createBodyHeaders(mailheaders, partheaders, is_toppart):
     ret = ""
-    if headers.has_key("From"):
-        ret = ret + "From: %s\n" % rfc1522.decode(headers["From"])
-    if headers.has_key("To"):
-        ret = ret + "To: %s\n" % rfc1522.decode(headers["To"])
-    if headers.has_key("Cc"):
-        ret = ret + "Cc: %s\n" % rfc1522.decode(headers["CC"])
-    if headers.has_key("Message-ID"):
-        ret = ret + "Message-ID: %s\n" % headers["Message-ID"]
+    if is_toppart:
+	if mailheaders.has_key("From"):
+	    ret = ret + "From: %s\n" % rfc1522.decode(mailheaders["From"])
+	if mailheaders.has_key("To"):
+	    ret = ret + "To: %s\n" % rfc1522.decode(mailheaders["To"])
+	if mailheaders.has_key("Cc"):
+	    ret = ret + "Cc: %s\n" % rfc1522.decode(mailheaders["CC"])
+	if mailheaders.has_key("Message-ID"):
+	    ret = ret + "Message-ID: %s\n" % mailheaders["Message-ID"]
     if "" != ret:
         ret = ret + "\n"
     return ret

@@ -31,6 +31,8 @@ logfile = open("/tmp/canidius.log", 'a')
 DEFAULT_PORT = '5222'
 DEFAULT_RESOURCE = 'LysKOM'
 
+ignore_users = []
+
 # Client specific aux items
 
 AI_CAN_CONF_MESSAGE = 10300
@@ -76,7 +78,7 @@ AGENT_PASSWORD = open( homed + "/."+ AGENT_PERSON + "_password" ).readline().str
 
 daemon_person = -1  # Will be looked up
 
-VERSION = "0.1 $Id: canidius.py,v 1.5 2004/12/03 14:38:33 _cvs_pont_tel Exp $"
+VERSION = "0.1 $Id: canidius.py,v 1.6 2004/12/05 11:14:16 _cvs_pont_tel Exp $"
 
 
 komsendq = Queue.Queue()
@@ -151,7 +153,14 @@ class komtext:
                 
                 self.miscinfo.comment_to_list.append(
                     kom.MICommentTo(kom.MIC_COMMENT,possible_texts[0]))
-            
+
+                # Make sure we only have one aux item of this type
+                removelist = []
+                for p in self.auxitems:
+                    if p.tag == AI_CAN_THREAD and p.data == '%s' % self.thread:
+                        removelist.append(p)
+                for p in removelist:
+                    self.auxitems.remove(p)
 
         kom.ReqCreateText(conn,
                           self.text,
@@ -289,6 +298,8 @@ def configmessage(person_no):
         return
 
 def check_active(person_no):
+    if person_no in ignore_users:
+        return None
     return configmessage(person_no)
 
 class person:
@@ -815,8 +826,8 @@ def async_message( msg, conn ):
             text = l1_d( msg.message.strip() )
 
         for q in msg_handlers.keys():
-            if text == q or text.startswith(q+' '):
-                if msg_handlers[q](text[len(q):].strip(),conn, p, msg.sender):
+            if text[0:1] == '/' and (text[1:] == q or text[1:].startswith(q+' ')):
+                if msg_handlers[q](text[1+len(q):].strip(),conn, p, msg.sender):
                     kommessage( msg.sender, l1_e(u"Närvarostatus skickad." )).send(conn)
                 return
 

@@ -52,13 +52,23 @@ GAZ_PW_LENGTH = 12
 # Number of warnings before gazonk is thrown out.
 GAZ_MAX_WARNINGS = 4
 
-# When to display statistics.
+# When to display statistics (type, amount).
+#
+# First number is unit:
 # 0 - never
 # 1 - hourly
 # 2 - dayly
+# 3 - weekly
 # 4 - monthly
 # 5 - yearly
-GAZ_DISPLAY_STATISTICS = 4
+#
+# Second number is amount (should be larger than 0):
+#
+# Example: (3,3) thus means each third week and
+#          (2,10) means each tenth day and
+#          (1,4) means every fourth hour and
+#          (4,1) means every month
+GAZ_DISPLAY_STATISTICS = (4,1)
 
 # Sleephours. These hours no new clues and no new warnings are sent.
 # I.e. it is like the clock doesn't go these hours.

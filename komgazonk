@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.12"
+VERSION="0.3.13"
 
 INVISIBLE = 0
 
@@ -422,8 +422,13 @@ class Gazonk:
                 return
 
             # Skicka varningen
-            message = "\n\nNu har det gått %d minuter sedan du blev gazonk.\n" % \
-                       ((current_time - self.time_last_action)/60)
+            message = ""
+            if self.current_clue > -1:
+                message += "\n\nNu har det gått %d minuter sedan senaste ledtråden skickades.\n" % \
+                           ((current_time - self.time_last_action)/60)
+            else:
+                message += "\n\nNu har det gått %d minuter sedan du blev gazonk.\n" % \
+                           ((current_time - self.time_last_action)/60)
             message += "Det finns inte tillräckligt med ledtrådar i ledtrådskön.\n\n"
             message += "Det här är varning %d av max %d, sedan kommer din \n" % \
                        (self.warnings_sent, GAZ_MAX_WARNINGS)
@@ -846,7 +851,7 @@ class TotStats:
         self.monthly = Stats(0)
         self.cr = Stats(0)
         self.disp_stat = GAZ_DISPLAY_STATISTICS
-        self.now = get_now_num(self.disp_stat)
+        self.last_sent = time.localtime(time.time())
 
     def reset(self):
         self.reset_now()
@@ -854,16 +859,39 @@ class TotStats:
 
     def __str__(self):
         return "<TotStats.{'total': %s, 'monthly': %s, 'cr': %s, 'disp_stat': %s" \
-               ", 'now': %s}>" % \
+               ", 'last_sent': %s}>" % \
                (str(self.total), str(self.monthly), str(self.cr), str(self.disp_stat), \
-                str(self.now))
+                str(self.last_sent))
 
     def __repr__(self):
         return self.__str__()
 
-    def reset_now(self):
-        self.disp_stat = GAZ_DISPLAY_STATISTICS
-        self.now = get_now_num(self.disp_stat)
+    def reset_now(self, set_last_sent = 1):
+        if set_last_sent == 1:
+            self.last_sent = time.localtime(time.time())
+
+        if self.disp_stat[0] == 0 or self.disp_stat[1] <= 0:
+            self.next_time = None
+            return
+
+        ds = copy.deepcopy(self.disp_stat)
+        if ds[0] == 3:
+            ds = (2, ds[1]*7)
+
+        tmpconv = {0: -1, 1: 3, 2: 2, 4: 1, 5: 0}
+        first = [1,1,1,0,0,0,0,0,-1]
+
+        time_type = tmpconv[ ds[0] ]
+
+        neg = 0
+        if self.disp_stat[0] == 3:
+            neg = self.last_sent.tm_wday
+
+        next_time_tmp = [x for x in self.last_sent]
+        next_time_tmp = next_time_tmp[:(time_type+1)] + first[(time_type+1):]
+        next_time_tmp[time_type] += ds[1] - neg
+        next_time_tmp = time.mktime(next_time_tmp)
+        self.next_time = next_time_tmp
 
     def new_round(self):
         self.cr.new_round()
@@ -902,16 +930,22 @@ class TotStats:
                 self.total.people[about_person[0]].send_person_stats(person,about_person)
 
     def check(self, g):
-        if self.disp_stat == 0:
+        if self.disp_stat[0] == 0 or self.disp_stat[1] <= 0:
             return
-        current = get_now_num(self.disp_stat)
-        if current != self.now:
+
+        if time.time() > self.next_time:
             # It is a new hour/day/week/month/year, so display stats.
             self.monthly.send_stat_letter(self, g)
             self.total.send_stat_letter(self, g)
             self.reset()
 
 class Stats:
+    mstrings = { 1: ("Den", "timme", "timmar", "timmen", "timmarna"), \
+                 2: ("Den", "dag", "dagar", "dagen", "dagarna"), \
+                 3: ("Den", "vecka", "veckor", "veckan", "veckorna"), \
+                 4: ("Den", "månad", "månader", "månaden", "månaderna"), \
+                 5: ("Det", "år", "år", "året", "åren") }
+
     def __init__(self,tot = 1):
         self.guesses = GuessDB()
         self.reset()
@@ -970,13 +1004,6 @@ class Stats:
                 self.people[person].merge_into(other.people[person])
 
     def send_stat_letter(self, s, g):
-        mstrings = { 1: ("Den", "timme", "timmen"), \
-                     2: ("Den", "dag", "dagen"), \
-                     3: ("Den", "vecka", "veckan"), \
-                     4: ("Den", "månad", "månaden"), \
-                     5: ("Det", "år", "året") }
-        (dd, mob, mbest) = mstrings[s.disp_stat]
-
         if self.total == 1:
             subject = "Statistik för Gazonks livstid"
             message = "Gazonks liv startades %s. Sedan dess har %d gazonkningar\n" % \
@@ -987,10 +1014,17 @@ class Stats:
             message += "%d givna ledtrådar. Totalt %d ledtrådar angavs.\n\n" % \
                        (self.given_clue_count, self.clue_count)
         else:
-            subject = "Statistik för den senaste %s." % mbest
+            disp_strings = Stats.mstrings[s.disp_stat[0]]
+            stat_period_string = ""
+            if s.disp_stat[1] == 1:
+                stat_period_string = "%s senaste %s" % (disp_strings[0], disp_strings[3])
+            else:
+                stat_period_string = "De senaste %d %s" % (s.disp_stat[1], disp_strings[4])
 
-            message = "%s senaste %s har %d gazonkningar avslutats och\n" % \
-                      (dd, mbest, self.round_count)
+            subject = "Statistik för %s." % string.lower(stat_period_string)
+
+            message = "%s har %d gazonkningar avslutats och\n" % \
+                      (stat_period_string, self.round_count)
             message += "det har gjorts totalt %d gissningar på sammanlagt %d givna\n" % \
                        (self.guesses.count, self.given_clue_count)
             message += "ledtrådar. Totalt %d ledtrådar angavs.\n\n" % \
@@ -1583,6 +1617,15 @@ if os.path.exists(DUMPFILE):
             tmpx = zip(gaz.current_guessers.keys(), gaz.current_guessers.values())
             gaz.current_guessers = dict([(x,['']*y) for (x,y) in tmpx])
 
+        if old_version < [0,3,13]:
+            if type(GAZ_DISPLAY_STATISTICS) != type((1,1)):
+                print "Du har inte uppdaterat konfigurationen.\n" \
+                      "Se GAZ_DISPLAY_STATISTICS i konfigurationen."
+                sys.exit(0)
+            del(gaz.tstats.now)
+            gaz.tstats.disp_stat = GAZ_DISPLAY_STATISTICS
+            gaz.tstats.reset_now()
+
         # Uppdatera versionsnumret
         gaz.version = VERSION
 else:
@@ -1603,8 +1646,12 @@ if gaz.current_time >= 0.0:
         gaz.night_started += time.time() - gaz.current_time
 
 if GAZ_DISPLAY_STATISTICS != gaz.tstats.disp_stat or \
-   GAZ_DISPLAY_STATISTICS < 1:
-    gaz.tstats.reset_now()
+   GAZ_DISPLAY_STATISTICS[0] < 1:
+    gaz.tstats.disp_stat = GAZ_DISPLAY_STATISTICS
+    if GAZ_DISPLAY_STATISTICS[0] != gaz.tstats.disp_stat[0]:
+        gaz.tstats.reset_now()
+    else:
+        gaz.tstats.reset_now(0)
 
 # Hantera meddelanden
 

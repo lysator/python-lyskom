@@ -1,0 +1,400 @@
+#!/usr/bin/python
+# LysKOM Protocol A version 10 client interface for Python
+# $Id: komshow,v 1.1 1999/07/16 22:22:41 kent Exp $
+# (C) 1999 Kent Engström. Released under GPL.
+
+import kom
+import komparam
+import sys
+import getopt
+import string
+
+# Get revision number from RCS/CVS
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+# Error/sucess reporting
+exit_code = 0
+def error(str, code = 2, exit_now = 0):
+    global exit_code
+    exit_code = max(exit_code, code)
+    sys.stderr.write("ERROR: " + str + "\n")
+    if exit_now:
+        exit()
+        
+def success(str):
+    sys.stderr.write("OK: " + str + "\n")
+
+def exit():
+    sys.exit(exit_code)
+
+# Printing functions
+
+def print_header(header):
+    print header
+
+def print_raw(text):
+    print text
+
+def print_empty():
+    print
+
+def print_line(descr, data, replace = []):
+    for (from_text, to_text) in replace:
+        if data == from_text:
+            data = to_text
+            break
+        
+    print "%-24s %s" % ( descr[:23] + ":", data)
+
+def print_bool_lines(lines):
+    for (text, value) in lines:
+        if text[0:1] == "!":
+            text = text[1:]
+            value = not value
+        if value:
+            value_text = "yes"
+        else:
+            value_text = "no"
+        print_line(text, value_text)
+
+def secs_to_string(secs):
+    if secs < 60:
+        return "%d s" % secs
+    mins = secs/60
+    secs = secs % 60
+    if mins < 60:
+        return "%d m %d s " % (mins, secs)
+    hours = mins / 60
+    mins = mins % 60
+    if hours < 24:
+        return "%d h %d m %d s " % ( hours, mins, secs)
+    days = hours / 24
+    hours = hours % 24
+    if days == 1:
+        return "%d day %d h %d m %d s " % ( days, hours, mins, secs)
+    else:
+        return "%d days %d h %d m %d s " % ( days, hours, mins, secs)
+
+        
+#
+# Show conference/person information
+#
+
+def show_conference(conf_name, person):
+    # Resolve name
+    matches = conn.lookup_name(conf_name,
+                               want_pers = person,
+                               want_confs = not person)
+    if len(matches) == 0:
+        error("%s -- not found" % conf_name, exit_now = 1)
+    elif len(matches) <> 1:
+        error("%s -- ambiguous name" % conf_name, exit_now = 1)
+
+    conf_no = matches[0][0]
+        
+    # Fetch and print conference data
+    cs = conn.conferences[conf_no]
+
+    print_header("CONFERENCE STATUS")
+    print_empty()
+    print_line("Number", str(conf_no))
+    print_line("Name", cs.name)
+    print_line("Created", cs.creation_time.to_date_and_time())
+    print_line("Created by", conn.conf_name(cs.creator,
+                                            default = "Person #%d",
+                                            include_no = 1))
+    print_line("Supervisor", conn.conf_name(cs.supervisor,
+                                            default = "Conf #%d",
+                                            include_no = 1))
+    
+    print_line("Superconference", conn.conf_name(cs.super_conf,
+                                                 default = "Conf #%d",
+                                                 include_no = 1))
+    
+    if cs.permitted_submitters == 0:
+        print_line("Permitted submitters", "everybody")
+    else:
+        print_line("Permitted submitters",
+                   conn.conf_name(cs.permitted_submitters,
+                                  default = "Conf #%d",
+                                  include_no = 1))
+        
+    print_line("No of members", str(cs.no_of_members))
+    print_line("Last written", cs.last_written.to_date_and_time())
+
+    print_line("Local no range", "%d - %d (%d)" % (
+        cs.first_local_no,
+        cs.first_local_no + cs.no_of_texts - 1,
+        cs.no_of_texts))
+
+    print_line("Nice (garb)", str(cs.nice) + " days")
+    print_line("Keep commented (garb)", str(cs.keep_commented) + " days")
+    print_line("Expire", str(cs.expire) + " (not used at the moment)")
+
+    print_line( "Presentation", str(cs.presentation),
+                replace=[("0","none")])
+    print_line( "Note on door", str(cs.msg_of_day),
+                replace=[("0","none")])
+    
+    print_bool_lines([("Secret", cs.type.secret),
+                      ("Closed", cs.type.rd_prot),
+                      ("Mailbox", cs.type.letterbox),
+                      ("!Comments allowed", cs.type.original),
+                      ("Anon. authors allowed", cs.type.allow_anonymous),
+                      ("!Secret members allowed", cs.type.allow_anonymous),
+                      ])
+    
+    print_empty()
+
+    # Fetch and print person data
+    if person:
+        ps = conn.persons[conf_no]
+        print_header("PERSON STATUS")
+        print_empty()
+
+        print_line("Username", ps.username)
+        print_line("Last login", ps.last_login.to_date_and_time())
+        print_line("Sessions", str(ps.sessions))
+        print_line("Total time present", secs_to_string(ps.total_time_present))
+        print_line("Texts read", "%d (%d fetched)" % \
+                   (ps.read_texts, ps.no_of_text_fetches))
+        print_line("Texts marked", str(ps.no_of_marks))
+        print_line("Member of (conferences)", str(ps.no_of_confs))
+        print_line("Conferences created", str(ps.created_confs))
+        print_line("Persons created", str(ps.created_persons))
+
+        print_line("Texts created", "%d (%d lines, %d bytes)" % \
+                   (ps.no_of_created_texts,
+                    ps.created_lines,
+                    ps.created_bytes))
+
+        print_line("First local no", str(ps.first_created_local_no))
+        print_line("User area", str(ps.user_area),
+                   replace=[("0","none")])
+
+        print_bool_lines([("Unread is secret", ps.flags.unread_is_secret)])
+        print_bool_lines([
+            ("Wheel priv", ps.privileges.wheel),
+            ("Admin priv", ps.privileges.admin),
+            ("Statistics priv", ps.privileges.statistic),
+            ("Create persons priv", ps.privileges.create_pers),
+            ("Create conferences priv", ps.privileges.create_conf),
+            ("Change name priv", ps.privileges.change_name),
+            ])
+
+        print_empty()
+
+    show_aux_items(cs.aux_items)
+
+    ms_list = kom.ReqGetMembers(conn, conf_no, 0, 100000).response()
+    print_header("MEMBERS")
+    print_empty()
+    for ms in ms_list:
+        (iflag, pflag, sflag) = (" ", " ", " ")
+        if ms.type.invitation:
+            iflag = "I"
+        if ms.type.passive:
+            pflag = "P"
+        if ms.type.secret:
+            sflag = "S"
+        name = conn.conf_name(ms.member, include_no = 1)[:55]
+        print_raw("%s%s%s %-55s %s" % (iflag, pflag, sflag,
+                                       name,
+                                       ms.added_at.to_date_and_time()))
+        if ms.added_by <> ms.member:
+            print_raw("            Added by at %s" % (
+                conn.conf_name(ms.added_by,
+                               default = "Person #%d",
+                               include_no = 1)))
+
+
+aux_item_names = {
+    kom.AI_CONTENT_TYPE: "CONTENT_TYPE",
+    kom.AI_FAST_REPLY: "FAST_REPLY",
+    kom.AI_CROSS_REFERENCE: "CROSS_REFERENCE",
+    kom.AI_NO_COMMENTS: "NO_COMMENTS",
+    kom.AI_PERSONAL_COMMENT: "PERSONAL_COMMENT",
+    kom.AI_REQUEST_CONFIRMATION: "REQUEST_CONFIRMATION",
+    kom.AI_READ_CONFIRM: "READ_CONFIRM",
+    kom.AI_REDIRECT: "REDIRECT",
+    kom.AI_X_FACE: "X_FACE",
+    kom.AI_ALTERNATE_NAME: "ALTERNATE_NAME",
+    kom.AI_PGP_SIGNATURE: "PGP_SIGNATURE",
+    kom.AI_PGP_PUBLIC_KEY: "PGP_PUBLIC_KEY",
+    kom.AI_E_MAIL_ADDRESS: "E_MAIL_ADDRESS",
+    kom.AI_FAQ_TEXT: "FAQ_TEXT",
+    kom.AI_CREATING_SOFTWARE: "CREATING_SOFTWARE",
+    kom.AI_MX_AUTHOR: "MX_AUTHOR",
+    kom.AI_MX_FROM: "MX_FROM",
+    kom.AI_MX_REPLY_TO: "MX_REPLY_TO",
+    kom.AI_MX_TO: "MX_TO",
+    kom.AI_MX_CC: "MX_CC",
+    kom.AI_MX_DATE: "MX_DATE",
+    kom.AI_MX_MESSAGE_ID: "MX_MESSAGE_ID",
+    kom.AI_MX_IN_REPLY_TO: "MX_IN_REPLY_TO",
+    kom.AI_MX_MISC: "MX_MISC",
+    kom.AI_MX_ALLOW_FILTER: "MX_ALLOW_FILTER",
+    kom.AI_MX_REJECT_FORWARD: "MX_REJECT_FORWARD",
+    kom.AI_NOTIFY_COMMENTS: "NOTIFY_COMMENTS",
+    kom.AI_FAQ_FOR_CONF: "FAQ_FOR_CONF",
+    }
+
+def show_aux_items(aux_items):
+    if len(aux_items) == 0:
+        print_header("NO AUX ITEMS")
+        print_empty()
+        return
+
+    print_header("AUX ITEMS")
+    print_empty()
+
+    for ai in aux_items:
+        print_line("Position", ai.aux_no)
+        if aux_item_names.has_key(ai.tag):
+            name = "%s (%d)" % (aux_item_names[ai.tag], ai.tag)
+        else:
+            name = "%d" % ai.tag
+        print_line("Name", name)
+        print_line("Created", ai.created_at.to_date_and_time())
+        print_line("Created by", conn.conf_name(ai.creator,
+                                                default = "Person #%d",
+                                                include_no = 1))
+        print_line("Inherit limit", str(ai.inherit_limit))
+        print_line("Length of data", len(ai.data))
+        print_line("Data", ai.data) # FIXME: large/binary data
+        print_bool_lines([
+            ("Deleted",ai.flags.deleted),
+            ("Inherit",ai.flags.inherit),
+            ("Secret",ai.flags.secret),
+            ("Hide creator",ai.flags.hide_creator),
+            ("Dont garb",ai.flags.dont_garb),
+            ])
+        print_empty()
+
+recipient_type_names = {
+    kom.MIR_TO: "To",
+    kom.MIR_CC: "Carbon Copy",
+    kom.MIR_BCC: "Blind Carbon Copy"
+    }
+
+def show_text(text_no_str):
+    try:
+        text_no = string.atoi(text_no_str)
+        ts = conn.textstats[text_no]
+    except:
+        error("%s - not found" % text_no_str, exit_now = 1)
+
+    print_header("TEXT STATUS")
+    print_empty()
+    print_line("Number", str(text_no))
+    print_line("Created", ts.creation_time.to_date_and_time())
+    
+    print_line("Author", conn.conf_name(ts.author,
+                                        default = "Person #%d",
+                                        include_no = 1))
+    print_line("Lines", str(ts.no_of_lines))
+    print_line("Characters", str(ts.no_of_chars))
+    print_line("Marks", str(ts.no_of_marks))
+    print_empty()
+
+    print_header("RECIPIENTS")
+    print_empty()
+
+    for r in ts.misc_info.recipient_list:
+        print_line("Type", recipient_type_names[r.type])
+        print_line("Recipient", conn.conf_name(r.recpt,
+                                               default = "Person #%d",
+                                               include_no = 1))
+        print_line("Local number", str(r.loc_no))
+        if r.sent_by is not None:
+            print_line("Sent by", conn.conf_name(r.sent_by,
+                                                 default = "Person #%d",
+                                                 include_no = 1))
+        if r.sent_at is not None:
+            print_line("Sent", r.sent_at.to_date_and_time())
+        if r.rec_time is not None:
+            print_line("Received", r.rec_time.to_date_and_time())
+        print_empty()
+
+    print_header("COMMENT GRAPH")
+    print_empty()
+    for c in ts.misc_info.comment_to_list:
+        if c.type == kom.MIC_FOOTNOTE:
+            print_line("Type", "Footnote To")
+        else:
+            print_line("Type", "Comment To")
+        print_line("Text", c.text_no)
+        if c.sent_by is not None:
+            print_line("Added by", conn.conf_name(c.sent_by,
+                                                 default = "Person #%d",
+                                                 include_no = 1))
+        if c.sent_at is not None:
+            print_line("Added", c.sent_at.to_date_and_time())
+        print_empty()
+
+    for c in ts.misc_info.comment_in_list:
+        if c.type == kom.MIC_FOOTNOTE:
+            print_line("Type", "Footnote In")
+        else:
+            print_line("Type", "Comment In")
+        print_line("Text", c.text_no)
+        print_empty()
+
+    show_aux_items(ts.aux_items)
+
+    print_header("SUBJECT AND BODY")
+    print_empty()
+    text = kom.ReqGetText(conn, text_no, 0, ts.no_of_chars).response()
+    print_raw(text)
+    
+# MAIN
+# Connect and log in
+
+param = komparam.Parameters(sys.argv[1:])
+(conn, conn_error) = param.connect_and_login(kom.CachedConnection)
+if conn is None:
+    sys.stderr.write("%s: %s\n" % (sys.argv[0], conn_error))
+    sys.exit(1)
+
+#
+# CHECK FOR OPTIONS
+#
+
+conf_name = None
+person = 0
+text_no = None
+
+options, arguments = getopt.getopt(param.get_arguments(),
+                                   "",
+                                   [
+                                       "conference=",
+                                       "person=",
+                                       "text=",
+                                       ])
+for (opt, optarg) in options:
+    if opt == "--conference":
+        conf_name = optarg
+        person = 0
+        text_no = None
+    elif opt == "--person":
+        conf_name = optarg
+        person = 1
+        text_no = None
+    elif opt == "--text":
+        text_no = optarg
+        conf_name = None
+    else:
+        error("Option %s not handled (internal error)" % opt)
+
+# Choose function
+
+if conf_name:
+    show_conference(conf_name, person)
+elif text_no:
+    show_text(text_no)
+else:
+    error("Choose function", exit_now=1)
+
+exit()
+

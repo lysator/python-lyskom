@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.9"
+VERSION="0.3.10"
 
 INVISIBLE = 0
 
@@ -283,10 +283,11 @@ class Gazonk:
 
         return who_string
 
-    def create_next_clues_string(self):
+    def create_next_clues_string(self, nasta = 0):
         nc_times = get_next_clue_time(self.time_last_action, \
                                       self.current_time_interval, \
-                                      GAZ_AMOUNT_CLUE_TIMES)
+                                      GAZ_AMOUNT_CLUE_TIMES, \
+                                      nasta)
         nc_times_str = format_times(nc_times, self.time_last_action)
         cl = self.current_clue + 1
         result = ""
@@ -666,7 +667,7 @@ class Gazonk:
                         subject = "%s gazonkar" % shorten_name(gaz_name)
                         message = "Tidsintervallet mellan ledtrådar har ändrats och \när nu %s\n\n" % \
                                   ti_format
-                        message += self.create_next_clues_string()
+                        message += self.create_next_clues_string(1)
                         self.send_letter(subject, message, GAZONK_CONF, 0, 0)
                 else:
                     send_message("Tidsintervallet är samma som förut. Ingen förändring.", \
@@ -704,7 +705,8 @@ class Gazonk:
             else:
                 nc_times = get_next_clue_time(self.time_last_action, \
                                               self.current_time_interval, \
-                                              GAZ_AMOUNT_CLUE_TIMES)
+                                              GAZ_AMOUNT_CLUE_TIMES, \
+                                              1)
 
                 current_time = time.time()
                 if nc_times[0] < (current_time + 0.1):
@@ -1413,11 +1415,15 @@ def format_times(time_list, relative_to_time):
     return result
 
 # Tar utifrån föregående tid och tidsintervallet reda på när nästa ledtråd borde komma.
-def get_next_clue_time(start_time, time_interval, amount):
-    from_time = start_time
+def get_next_clue_time(start_time, time_interval, amount, nasta = 0):
+    from_time = start_time + 0.0
     now = time.time()
-    if GAZ_SLEEP_HOURS.count(time.localtime(start_time).tm_hour) > 0:
-        from_time -= float(time.localtime(start_time).tm_min)*60.0
+    if nasta == 1:
+        while GAZ_SLEEP_HOURS.count(time.localtime(from_time).tm_hour) > 0:
+            from_time -= 3600.0
+    else:
+        if GAZ_SLEEP_HOURS.count(time.localtime(start_time).tm_hour) > 0:
+            from_time -= float(time.localtime(start_time).tm_min)*60.0
     result = []
     for nr in range(amount):
         cur_hour = time.localtime(from_time).tm_hour

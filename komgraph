@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komgraph,v 1.2 1999/07/17 10:16:43 kent Exp $
+# $Id: komgraph,v 1.3 1999/07/23 15:10:53 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom
@@ -10,7 +10,7 @@ import getopt
 import string
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.2 $"
+vc_revision = "$Revision: 1.3 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -28,6 +28,20 @@ def success(str):
 def exit():
     sys.exit(exit_code)
 
+# Return true iff the lists share at least one common element
+def common_element_exists(l1, l2):
+    for e1 in l1:
+        if e1 in l2:
+            return 1
+    return 0
+
+# Recipient types
+recipient_type_dict = {
+    kom.MIR_TO: "To",
+    kom.MIR_CC: "CC",
+    kom.MIR_BCC: "BCC"
+    }
+
 # VCG quote
 def vcg_quote(str):
     res = []
@@ -35,7 +49,7 @@ def vcg_quote(str):
     for c in str:
         oc = ord(c)
         if oc >= 128 or c == '"':
-            res.append("\\fi%d" % oc)
+            res.append("\\fi%03d" % oc)
         else:
             res.append(c)
     return string.join(res,"")
@@ -63,8 +77,18 @@ class Graph:
             self.show_missing_text(text_no)
 
 class VcgGraph(Graph):
+    def __init__(self, root_str, no_body = 0, stay_in_list = [], colour_authors = 0):
+        Graph.__init__(self, root_str)
+        self.no_body = no_body
+        self.stay_in_list = stay_in_list
+        self.colour_authors = colour_authors
+        self.colour_dict = {}
+        self.colour_next = 1
+        
     def walk(self):
         print 'graph: {'
+        print '    shrink: 4'
+        print '    stretch: 3'
         print '  title: "KOM GRAPH"'
         self.visit(self.root)
         print "}"
@@ -76,29 +100,67 @@ class VcgGraph(Graph):
                              "\n")
         subj = lines[0]
         body = string.join(lines[1:], "\n")
-        
-        label = "%d at %s" % (text_no,
-                              text_stat.creation_time.to_date_and_time())
-        label = label + "\nBy %s" % conn.conf_name(text_stat.author)
-        label = label + "\n%s" % subj
 
-        label = label + "\n\n" + body
+        # Line: text_no, time and author
+        label = "[#%d] %s  %s" % (text_no,
+                                  text_stat.creation_time.to_date_and_time(),
+                                  conn.conf_name(text_stat.author))
 
+        # Line(s): recipients
+        for mir in text_stat.misc_info.recipient_list:
+            label = label + "\n%s: %s" % (recipient_type_dict[mir.type],
+                                         conn.conf_name(mir.recpt))
+
+
+        # Line: subject
+        label = label + "\n\n%s" % subj
+
+        # Body
+        if not self.no_body:
+            label = label + "\n\n" + body
+
+        # Colour
+        colour = None
+        if self.colour_authors:
+            if not self.colour_dict.has_key(text_stat.author):
+                self.colour_dict[text_stat.author] = self.colour_next
+                self.colour_next = self.colour_next +1
+            colour = "%d" % self.colour_dict[text_stat.author]
+
+        # And now... the node itself
         print '  node: {'
         print '    title: "%d"' % text_no
+        print '    horizontal_order: %d' % text_no
+        if colour:
+            print '    color: %s' % colour
         print '    label: "%s"' % vcg_quote(label)
         print '  }'
         
     def show_missing_text(self, text_no):
         print '  node: {'
         print '    title: "%d"' % text_no
+        print '    horizontal_order: %d' % text_no
         print '    label: "*MISSING*"'
         print '  }'
 
     def show_comment(self, text_no, text_stat, comment_in):
+        if len(self.stay_in_list) > 0:
+            # We have a stay-in list to consider. See if this comment leads
+            # to a text in an acceptable conference.
+            try:
+                linked_text_stat = conn.textstats[comment_in.text_no]
+                all_recipients = map(lambda x: x.recpt, linked_text_stat.misc_info.recipient_list)
+                if not common_element_exists(all_recipients, self.stay_in_list):
+                    return 0
+            except:
+                return 0                    
+
         print '  edge: {'
         print '    sourcename: "%d"' % text_no
         print '    targetname: "%d"' % comment_in.text_no
+        if comment_in.type <> kom.MIC_COMMENT:
+            print '    thickness: 4' # footnotes are thicker
+            print '    linestyle: dotted' # ... and dotted
         print '  }'
         return 1
 
@@ -116,22 +178,43 @@ if conn is None:
 #
 
 root = None
+no_body = 0
+stay_in_list = []
+colour_authors = 0
 
 options, arguments = getopt.getopt(param.get_arguments(),
                                    "",
                                    [
                                        "root=",
+                                       "no-body",
+                                       "stay-in=",
+                                       "colour-authors",
                                        ])
 for (opt, optarg) in options:
     if opt == "--root":
         root = optarg
+    elif opt == "--no-body":
+        no_body = 1
+    elif opt == "--stay-in":
+        confs = conn.lookup_name(optarg, want_pers = 1, want_confs = 1)
+        if len(confs) == 1:
+            stay_in_list.append(confs[0][0])
+        elif len(confs) > 1:
+            error("%s is not a unique name" % optarg, exit_now = 1)
+        else:
+            error("%s not found" % optarg, exit_now = 1)
+    elif opt == "--colour-authors":
+        colour_authors = 1
     else:
-        error("Option %s not handled (internal error)" % opt)
+        error("Option %s not handled (internal error)" % opt, exit_now = 1)
 
 # Choose function
 
 if root is not None:
-    g = VcgGraph(root)
+    g = VcgGraph(root,
+                 no_body = no_body,
+                 stay_in_list = stay_in_list,
+                 colour_authors = colour_authors)
     g.walk()
     
 else:

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some word statistics about a conference
-# $Id: komconfwords,v 1.3 2001/03/05 22:39:46 kent Exp $
+# $Id: komconfwords,v 1.4 2001/03/12 22:28:52 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -25,7 +25,7 @@ import whrandom
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.3 $"
+vc_revision = "$Revision: 1.4 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -161,16 +161,23 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
         
         r.write("\n")
         r.write("Antal inlägg:               %5d\n" % self.no_of_articles)
-        r.write("Antal ord:                  %5d\n" % self.no_of_words)
+        if self.no_of_articles:
+            r.write("Antal ord:                  %5d (i genomsnitt %.1f ord/inlägg)\n" % \
+                    (self.no_of_words, float(self.no_of_words)/self.no_of_articles))
 
         r.write("\n")
         r.write("Användningar av nya ord:    %5d\n" % self.no_of_new_words)
-        r.write("Antal unika nya ord:        %5d\n" % unique_new)
+        if unique_new:
+            r.write("Antal unika nya ord:        %5d (i genomsnitt %.1f användningar/ord )\n" % (unique_new, float(self.no_of_new_words)/unique_new))
 
         r.write("\n")
         r.write("Användningar av gamla ord:  %5d\n" % self.no_of_old_words)
-        r.write("Antal unika gamla ord:      %5d\n" % unique_old)
+        if unique_old:
+            r.write("Antal unika gamla ord:      %5d (i genomsnitt %.1f användningar/ord )\n" % (unique_old, float(self.no_of_old_words)/unique_old))
         
+        r.write("\n")
+        r.write("Antal kända unika ord:      %5d (totalt sedan första körningen)\n" % len(self.words))
+
         r.write("\n")
         r.write("Topplista över nya ord\n")
         r.write("----------------------\n")
@@ -197,6 +204,12 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
             wot = whrandom.choice(self.new_words.keys())
             r.write("Dagens utvalda nya ord är: %s\n" % wot)
 
+            sot = []
+            for i in range(0,whrandom.randint(3,10)):
+                sot.append(whrandom.choice(self.new_words.keys()))
+            sot = string.capitalize(string.join(sot, " ") + ".")
+            r.write("Dagens utvalda nya mening är: %s\n" % sot)
+                           
         r.write("\n")
         
         body = r.getvalue()

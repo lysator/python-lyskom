@@ -982,6 +982,7 @@ if PID == 1:
         sys.exit(0)
     pidfile = open(PIDFILE, "w")
     pidfile.write(str(os.getpid()))
+    pidfile.close()
 
 # Öppna en logfil, kan vara bra att ha :-)
 if LOG == 1:

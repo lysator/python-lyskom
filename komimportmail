@@ -1,7 +1,7 @@
-#!/usr/bin/python-1.5.2
+#!/sw/local/bin/python
 # -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.19 2000/03/28 19:36:12 kent Exp $
+# $Id: komimportmail,v 1.20 2000/07/31 17:34:24 forsberg Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -22,7 +22,7 @@ import re
 import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.19 $"
+vc_revision = "$Revision: 1.20 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -192,7 +192,8 @@ class MessageIDDb:
 # Create an article or add recipients to an existing one
 def create_article_or_add_recipients(mail,
                                      envelope_sender,
-                                     envelope_recipients):
+                                     envelope_recipients,
+                                     with_hdr):
     # Get Message-ID from mail
     try:
         message_id = last_message_id_in(mail.headers["Message-ID"])
@@ -220,7 +221,7 @@ def create_article_or_add_recipients(mail,
     if existing_text_no is None:
         # We should create a new article based on this mail
         create_article(mail, envelope_sender, recipient_list,
-                       message_id)
+                       message_id, with_hdr)
     else:
         # We should add new recipients to this article
         add_recipients(mail, envelope_sender, recipient_list,
@@ -229,7 +230,7 @@ def create_article_or_add_recipients(mail,
 
 # Create a new article based on this mail
 def create_article(mail, envelope_sender, envelope_recipients,
-                   message_id):
+                   message_id, with_hdr):
 
     # Threading
     
@@ -267,7 +268,8 @@ def create_article(mail, envelope_sender, envelope_recipients,
                                   parts[0],
                                   parent_message_id,
                                   parent_text_no,
-                                  top = None)
+                                  top = None,
+                                  with_hdr = with_hdr)
 
     # Handle the rest of the parts as comments to the first part
     sub_text_nos = []
@@ -324,7 +326,8 @@ def create_article_part(mail,
                         part,
                         parent_message_id = None,
                         parent_text_no = None,
-                        top = None):
+                        top = None,
+                        with_hdr = 0):
 
     # Prepare Misc-Info and Aux Item list for later user
     misc_info = kom.CookedMiscInfo()
@@ -402,12 +405,6 @@ def create_article_part(mail,
 
         for (display_name, addr_spec) in \
             mail.headers.getaddrlist(header_name):
-            # Replace None with an empty string
-            if display_name is None:
-                display_name = ""
-            if addr_spec is None:
-                addr_spec = ""
-
             # Remove outer double qoutes and RFC1522 coding if
             # present in the display name.                
             if display_name[0:1] == '"' and display_name[-1:0] == '"':
@@ -497,9 +494,12 @@ def create_article_part(mail,
             subject = APPENDIX_SUBJECT_PREFIX % mime_filename + subject
         else:
             subject = APPENDIX_SUBJECT_PREFIX_NONAME + subject
-      
+
+    log("create_article_part, with_hdr: %d" % with_hdr, LOG_DEBUG)
     # Try to create article part
     try:
+        if 1 == with_hdr:
+            part.data = createBodyHeaders(part.headers) + part.data
         text_no = send_to_kom(subject, part.data, misc_info, aux_items)
     except:
         error_exit("Failed to create article (error %s)" % sys.exc_info()[0],
@@ -507,6 +507,20 @@ def create_article_part(mail,
                           
     return text_no
 
+def createBodyHeaders(headers):
+    ret = ""
+    if headers.has_key("From"):
+        ret = ret + "From: %s\n" % rfc1522.decode(headers["From"])
+    if headers.has_key("To"):
+        ret = ret + "To: %s\n" % rfc1522.decode(headers["To"])
+    if headers.has_key("Cc"):
+        ret = ret + "Cc: %s\n" % rfc1522.decode(headers["CC"])
+    if headers.has_key("Message-ID"):
+        ret = ret + "Message-ID: %s\n" % headers["Message-ID"]
+    if "" != ret:
+        ret = ret + "\n"
+    return ret
+    
 
 # Send a text (subject, body, Misc-Info and Aux-Items) to KOM.
 # Destructively prune comment-to/footnote-to Misc-Info items
@@ -709,6 +723,7 @@ def only_mime_headers(headers):
 #   --log-level=LEVEL
 #		Set log level to (ERROR, WARNING, INFO, DEBUG)
 #		Default is INFO
+#   --with-hdr  Add Message-ID:, From: and To: to message body top.
 #
 # Arguments:
 #   envelope-sender [envelope-recipient...]
@@ -718,12 +733,14 @@ def only_mime_headers(headers):
 FUNC_IMPORT_MAIL = 0; FUNC_GC = 1; FUNC_DUMP = 2
 function = FUNC_IMPORT_MAIL
 log_level = LOG_INFO
+with_hdr = 0
 
 try:
     options, arguments = getopt.getopt(sys.argv[1:],
                                        "",
                                        [
                                            "gc",
+                                           "with-hdr",
                                            "dump",
                                            "log-level=",
                                            ])
@@ -735,6 +752,8 @@ for (opt, optarg) in options:
         function = FUNC_GC
     elif opt == "--dump":
         function = FUNC_DUMP
+    elif opt == "--with-hdr":
+        with_hdr = 1
     elif opt == "--log-level":
         try:
             new_log_level = find_log_level(optarg)
@@ -786,7 +805,8 @@ elif function == FUNC_IMPORT_MAIL:
     mail = mimereader.Message(sys.stdin)
     create_article_or_add_recipients(mail,
                                      envelope_sender,
-                                     envelope_recipients)
+                                     envelope_recipients,
+                                     with_hdr)
 else:
     # Function: ?
     error_exit("Internal error: unknown function", EX_USAGE)

@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+# -*- coding: iso-8859-1 -*-
+#
+# Dump persons, conferences and memberships for further analysis by
+# other programs.
+#
+# $Id: dumpmembers,v 1.1 2005/03/03 19:37:40 kent Exp $
+#
+# (C) 2005 Kent Engström. Released under GPL.
+
+import sys
+import optparse   # Python 2.3 needed
+
+import kom
+import komconnect # Python 2.3 needed
+
+MAXCONFS = 65535
+
+errwrite = sys.stderr.write
+
+# Option handling
+
+optp = optparse.OptionParser()
+komconnect.add_server_name_password(optp) # Standard options for login
+(options, args) = optp.parse_args()
+
+# Connect and log in
+
+try:
+    conn = komconnect.connect_and_login(options, kom.CachedConnection)
+except komconnect.Error, error:
+    errwrite("%s: %s\n" % (sys.argv[0], error))
+    sys.exit(1)
+
+# List all conferences. We differentiate between
+#  1) letterboxes, i.e. persons
+#  2) "real" conferences, i.e. not letterboxes
+
+persons = {}
+conferences = {}
+
+for czi in kom.ReqLookupZName(conn, "", 1, 1).response():
+    if czi.type.secret: 	
+	continue
+    if czi.type.letterbox:
+	persons[czi.conf_no] = czi.name
+    else:
+	conferences[czi.conf_no] = czi.name
+
+# Output this data first
+for (tag, data) in (('P', persons), ('C', conferences)):
+    for (no, name) in sorted(data.items()):
+	print "%s %d %s" % (tag, no, name)
+    
+n=0
+# Memberships
+for pno in sorted(persons.keys()):
+    n=n+1
+    errwrite("%5d/%5d %s\n" % (n, len(persons), persons[pno]))
+    for ms in  kom.ReqGetMembership11(conn, pno, 0, MAXCONFS, 0, 0).response():
+	cno = ms.conference
+	if cno in conferences:
+	    print "M %d %d" % (pno, cno)

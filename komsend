@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komsend,v 1.1 1999/07/15 14:30:44 kent Exp $
+# $Id: komsend,v 1.2 1999/07/15 14:39:11 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom
@@ -10,7 +10,7 @@ import getopt
 import string
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.1 $"
+vc_revision = "$Revision: 1.2 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -46,7 +46,8 @@ comment_to_list = []
 footnote_to_list = []
 hide_creating_software = 0
 aux_item_list = []
-Subject = ""
+subject = ""
+anonymous = 0
 
 options, arguments = getopt.getopt(param.get_arguments(),
                                    "",
@@ -59,6 +60,7 @@ options, arguments = getopt.getopt(param.get_arguments(),
                                        "footnote=",
                                        "hide-creating-software",
                                        "aux-item=",
+                                       "anonymous",
                                        ])
 for (opt, optarg) in options:
     if opt == "--to":
@@ -77,6 +79,8 @@ for (opt, optarg) in options:
         hide_creating_software = 1
     elif opt == "--aux-item":
         aux_item_list.append(optarg)
+    elif opt == "--anonymous":
+        anonymous = 1
     else:
         error("Option %s not handled (internal error)" % opt)
 #
@@ -177,7 +181,12 @@ if exit_code <> 0:
 
 # Send!
 try:
-    text_no = kom.ReqCreateText(conn, text, misc_info, aux_items).response()
+    if anonymous:
+        request = kom.ReqCreateAnonymousText
+    else:
+        request = kom.ReqCreateText
+
+    text_no = request(conn, text, misc_info, aux_items).response()
     success("Text %d created" % text_no)
 except kom.Error:
     error("Failed to create text (%s)" % sys.exc_info()[0:1])

@@ -1,6 +1,6 @@
 #!/usr/bin/python-1.5.2
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.10 1999/07/26 13:28:32 kent Exp $
+# $Id: komimportmail,v 1.11 1999/10/09 12:57:11 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -19,10 +19,10 @@ import os
 # -- CONFIGURATION BEGINS HERE ---
 
 # How to connect to the server
-KOMSERVER = "localhost"
+KOMSERVER = "192.168.1.12"
 KOMPORT = 4894
-KOMPERSON = 21
-KOMPASSSWORD = "eppelpost"
+KOMPERSON = 10
+KOMPASSSWORD = "NIX"
 
 # File to log some information into
 LOG_FILE = "/home/kent/lyskom/python-lyskom/maillog"
@@ -41,7 +41,7 @@ APPENDIX_COMMENT_TYPE = kom.MIC_COMMENT #or kom.MIC_FOOTNOTE
 # -- CONFIGURATION ENDS HERE ---
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.10 $"
+vc_revision = "$Revision: 1.11 $"
 revision = vc_revision[11:-2]
 
 # Error reporting to stderr and logfile
@@ -298,7 +298,7 @@ def create_article_part(mail,
 
     # MIME Content type
     mime_type = part.headers.gettype()
-    aux_items.append(kom.AuxItem(kom.AI_MX_MIME_CONTENT_TYPE,
+    aux_items.append(kom.AuxItem(kom.AI_CONTENT_TYPE,
                                  mime_type))
     log("MIME type of this part: %s" % mime_type)
 

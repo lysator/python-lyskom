@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.7 2001/03/01 12:00:31 kent Exp $
+# $Id: komconfstats,v 1.8 2001/03/01 13:57:30 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -35,7 +35,7 @@ import whrandom
 import jddate # From the lyspython collection
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.7 $"
+vc_revision = "$Revision: 1.8 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -632,7 +632,8 @@ class ConfStats:
         self.oat.prop.title = "Originalinlägg"
         sub = self.oat.prop.add_sub(Tabulator)
         sub.what = "ärenderad"
-        
+        sub = sub.add_sub(Tabulator)
+        sub.what = "inläggsnummer"
         self.add_report(self.oat)
       
         self.sat = ConfNameTabulator()
@@ -1016,7 +1017,7 @@ class ConfStats:
             # interesting information for all "normal" chains.
             
             if len(ts.misc_info.comment_to_list) == 0:
-                self.oat.tabulate([ts.author, subject])
+                self.oat.tabulate([ts.author, subject, str(global_no)])
             else:
                 recipients_of_commented_includes_this_conference = 0
                 this_is_a_footnote = 0

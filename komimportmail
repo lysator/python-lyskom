@@ -1,6 +1,6 @@
 #!/usr/bin/python-1.5.2
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.9 1999/07/26 12:53:32 kent Exp $
+# $Id: komimportmail,v 1.10 1999/07/26 13:28:32 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -41,7 +41,7 @@ APPENDIX_COMMENT_TYPE = kom.MIC_COMMENT #or kom.MIC_FOOTNOTE
 # -- CONFIGURATION ENDS HERE ---
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.9 $"
+vc_revision = "$Revision: 1.10 $"
 revision = vc_revision[11:-2]
 
 # Error reporting to stderr and logfile
@@ -442,15 +442,46 @@ def name_list_to_conf_no_list(name_list):
             conf_no_list.append(matches[0][0])            
 
     return conf_no_list
+
+# Garbage collect the Message-ID database
+def gc_message_id_db():
+    log("Garbage collection started")
+    s = message_id_db.exclusive_open()
+
+    ctr_left = 0
+    ctr_gone = 0
+    id_list = s.keys()
+    log("Will check %d articles" % (len(id_list)))
+    for id in id_list:
+        (text_no, created) = s[id]
+        try:
+            ts = kom.ReqGetTextStat(c, text_no).response()
+            ctr_left = ctr_left + 1
+        except kom.NoSuchText:
+            ctr_gone = ctr_gone + 1
+            log("GC %7d: %s" % (text_no, id))
+            del s[id]
+            
+    message_id_db.exclusive_close()
+    log("Garbage collection finished (left: %d, gone: %d)" % \
+        (ctr_left, ctr_gone))
         
 # MAIN
 
-# Arguments: envelope-sender [envelope-recipient...]
+# Arguments:
+#   envelope-sender [envelope-recipient...]
+# Special case:
+#   If just one argument is present, and that is "--gc", then do
+#   a garbage collection of the Message-ID-database.
 
-if len(sys.argv) < 3:
+if len(sys.argv) == 2 and sys.argv[1] == "--gc":
+    gc = 1
+elif len(sys.argv) < 3:
     fatal("Wrong number of arguments")
-envelope_sender = sys.argv[1]
-envelope_recipients = sys.argv[2:]
+else:
+    gc = 0
+    envelope_sender = sys.argv[1]
+    envelope_recipients = sys.argv[2:]
 
 # Connect and log in
 
@@ -469,11 +500,17 @@ try:
 except:
     fatal("Cannot access Message-ID database")
 
-# Read MIME mail
-mail = mimereader.Message(sys.stdin)
-
-# Create an article or add recipients to an existing one
-create_article_or_add_recipients(mail, envelope_sender, envelope_recipients)
+# Choose function
+if gc:
+    # Function: Garbage collection
+    gc_message_id_db()
+    
+else:
+    # Function: Normal mail handling
+    mail = mimereader.Message(sys.stdin)
+    
+    # Create an article or add recipients to an existing one
+    create_article_or_add_recipients(mail, envelope_sender, envelope_recipients)
 
 # Exit successfully
 sys.exit(0)

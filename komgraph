@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komgraph,v 1.5 1999/10/18 09:15:06 kent Exp $
+# $Id: komgraph,v 1.6 2001/01/22 08:24:09 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom
@@ -12,7 +12,7 @@ import komwalk
 import komformat
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.5 $"
+vc_revision = "$Revision: 1.6 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -91,7 +91,10 @@ class VcgGraph(komwalk.Walker):
         print '    horizontal_order: %d' % text_no
         if colour:
             print '    color: %s' % colour
-        print '    label: "%s"' % vcg_quote(t.get())
+        if self.no_body:
+            print '    label: "%s"' % vcg_quote(str(text_no))
+        else:
+            print '    label: "%s"' % vcg_quote(t.get())
         print '  }'
 
         # Tell the walker to keep on walking

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+!/usr/bin/env python
 
 # LysKOM gazonk client
 
@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.7"
+VERSION="0.3.8"
 
 INVISIBLE = 1
 
@@ -323,7 +323,7 @@ class Gazonk:
         rec = kom.MIRecipient(kom.MIR_TO, recipient)
         misc_info.recipient_list.append(rec)
 
-        comments_to = extra_comments_to
+        comments_to = extra_comments_to + []
         if new == 0 and person == 0 and self.last_text_no > 0:
             comments_to += [self.last_text_no]
 
@@ -684,12 +684,18 @@ class Gazonk:
                                               GAZ_AMOUNT_CLUE_TIMES)
 
                 if nc_times[0] < current_time:
-                    send_message("Nästa ledtråd borde redan ha sänts, tjata på gazonk!", \
-                                 msg.sender)
+                    if len(self.clues) > self.current_clue + 1:
+                        send_message("Oj, är klockan så mycket! " + \
+                                     "Bäst jag skickar ut en ny ledtråd.", msg.sender)
+                    else:
+                        send_message("Nästa ledtråd borde redan ha sänts, tjata på gazonk!", \
+                                     msg.sender)
                 else:
                     time_left = nc_times[0] - current_time
                     message = "Det är %s kvar till nästa ledtråd.\n\n" % \
                               format_hms(time_left,1)
+                    message += "Nuvarande tidsintervall är %s.\n\n" % \
+                               format_times(self.current_time_interval,2)
                     nc_times_str = format_times(nc_times[1:], nc_times[0])
                     cl = self.current_clue + 2
                     for tstr in nc_times_str:

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.10 2001/03/03 14:41:23 kent Exp $
+# $Id: komconfstats,v 1.11 2001/03/05 22:39:46 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import whrandom
 import jddate # From the lyspython collection
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.10 $"
+vc_revision = "$Revision: 1.11 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -55,22 +55,22 @@ def exit():
     sys.exit(exit_code)
 
 #
-# Split a text into words (removing the subject line!)
+# Split a text into lower case words (removing the subject line!)
 #
+
+upper2lower = string.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ",
+                               "abcdefghijklmnopqrstuvwxyzåäö")
+def split_text_dehyphen(s):
+    return re.sub("(^-*)|(-*$)", "", s)
 
 def split_text_into_words(text):
     first_nl = string.find(text,"\n")
     if first_nl <> -1:
         text = text[first_nl+1:]
-    re_sanitize = re.compile("[^a-zåäö]+")
-
-    def mymap(w, r = re_sanitize):
-        return r.sub("", string.lower(w))
-
-    def myfilter(w):
-        return len(w)
-    
-    return filter(myfilter, map(mymap, string.split(text)))
+    text = string.translate(text, upper2lower)
+    words = filter(None, map(split_text_dehyphen,
+                             re.split("[^a-zåäö-]+", text)))
+    return words
 
 # Handle counts and nouns
 def get_count_with_noun(count, singularis, pluralis = None):

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some word statistics about a conference
-# $Id: komconfwords,v 1.7 2001/03/28 16:21:20 kent Exp $
+# $Id: komconfwords,v 1.8 2001/04/08 12:50:05 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 
@@ -25,7 +25,7 @@ import whrandom
 import jddate
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.7 $"
+vc_revision = "$Revision: 1.8 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -68,6 +68,15 @@ def get_count_with_noun(count, singularis, pluralis = None):
     else:
         return "%d %s" % (count, pluralis)
 
+# Safe division and formatting
+def safe_div(format, p, q, percent = 0):
+    if percent:
+        p = p * 100
+        
+    if q == 0:
+        return ""
+    else:
+        return format % (float(p)/q)
 
 #
 # CONFWORDS CLASS
@@ -146,60 +155,79 @@ class ConfWords(komconfwalker.ConfTemporalWalker):
         # Report on everything
         r = cStringIO.StringIO()
         conf_name = self.conn.conf_name(self.conference)
+        
+        if self.no_of_new_words == 0:
+            title = "Ingen ordrapport för %s" % conf_name
+            self.write_article(title, "Inga inlägg funna.\n")
+            return
+
         title = "Ordrapport för %s" % conf_name
 
-        unique_new = len(self.new_words)
-        unique_old = len(self.old_words)
-        
-#        r.write("Vald period: %20s\n" % self.period.format())
         r.write("Först inlägg: %19s\n" % \
                 time.strftime("%Y-%m-%d %H:%M:%S",
                               time.localtime(self.first_created)))
+
         r.write("Sista inlägg: %19s\n" % \
                 time.strftime("%Y-%m-%d %H:%M:%S",
                               time.localtime(self.last_created)))
-        
-        r.write("\n")
-        r.write("Antal inlägg:               %5d\n" % self.no_of_articles)
-        if self.no_of_articles:
-            r.write("Antal ord:                  %5d (i genomsnitt %.1f ord/inlägg)\n" % \
-                    (self.no_of_words, float(self.no_of_words)/self.no_of_articles))
-
-        r.write("\n")
-        r.write("Användningar av nya ord:    %5d\n" % self.no_of_new_words)
-        if unique_new:
-            r.write("Antal unika nya ord:        %5d (i genomsnitt %.1f användningar/ord )\n" % (unique_new, float(self.no_of_new_words)/unique_new))
-
-        r.write("\n")
-        r.write("Användningar av gamla ord:  %5d\n" % self.no_of_old_words)
-        if unique_old:
-            r.write("Antal unika gamla ord:      %5d (i genomsnitt %.1f användningar/ord )\n" % (unique_old, float(self.no_of_old_words)/unique_old))
-        
-        r.write("\n")
-        r.write("Antal kända unika ord:      %5d (totalt sedan första körningen)\n" % len(self.words))
-
-        r.write("\n")
-        r.write("Topplista över nya ord\n")
-        r.write("----------------------\n")
         r.write("\n")
 
-        sortlist = map(lambda x: (-x[1], whrandom.randint(1,1000), x[0]), self.new_words.items())
-        sortlist.sort()
-        pos = 1
-        last_occ = None 
-        for (occ, junk, word) in sortlist:
-            occ = - occ
+        unique_new = len(self.new_words)
+        unique_old = len(self.old_words)
+        unique = unique_new + unique_old
 
-            if occ <> last_occ:
-                pos_str = str(pos)
-            else:
-                pos_str = '"'
-            r.write("%4s) %4d  %s\n" % (pos_str, occ, word))
-            pos = pos + 1
-            last_occ = occ
-            if pos > 100: break
-
+        r.write("                Ord     Unika ord   Användningar\n")
+        r.write("------------------------------------------------\n")
+        r.write("Nya    %5d %5s%%  %5d %5s%%           %4s\n" % \
+                (self.no_of_new_words,
+                 safe_div("%4.1f", self.no_of_new_words, self.no_of_words, percent=1),
+                 unique_new,
+                 safe_div("%4.1f", unique_new, unique, percent=1),
+                 safe_div("%4.1f", self.no_of_new_words, unique_new)))
+        r.write("Gamla  %5d %5s%%  %5d %5s%%           %4s\n" % \
+                (self.no_of_old_words,
+                 safe_div("%4.1f", self.no_of_old_words, self.no_of_words, percent=1),
+                 unique_old,
+                 safe_div("%4.1f", unique_old, unique, percent=1),
+                 safe_div("%4.1f", self.no_of_old_words, unique_old)))
+        r.write("------------------------------------------------\n")
+        r.write("Summa  %5d         %5d                  %4s\n" % \
+                (self.no_of_words,
+                 unique,
+                 safe_div("%4.1f", self.no_of_words, unique)))
         r.write("\n")
+                 
+        r.write("%d inlägg, i genomsnitt %s ord/inlägg.\n" % \
+                (self.no_of_articles,
+                 safe_div("%.1f", self.no_of_words, self.no_of_articles)))
+
+        r.write("Vid slutet av denna period är %d unika ord kända.\n" % \
+                (len(self.words)))
+        r.write("\n")
+
+        if unique_new >0:
+            r.write("Topplista över nya ord\n")
+            r.write("----------------------\n")
+            r.write("\n")
+    
+            sortlist = map(lambda x: (-x[1], whrandom.randint(1,1000), x[0]), self.new_words.items())
+            sortlist.sort()
+            pos = 1
+            last_occ = None 
+            for (occ, junk, word) in sortlist:
+                occ = - occ
+    
+                if occ <> last_occ:
+                    pos_str = str(pos)
+                else:
+                    pos_str = '"'
+                r.write("%4s) %4d  %s\n" % (pos_str, occ, word))
+                pos = pos + 1
+                last_occ = occ
+                if pos > 100: break
+    
+            r.write("\n")
+
         if len(self.new_words) > 0:
             wot = whrandom.choice(self.new_words.keys())
             r.write("Dagens utvalda nya ord är: %s\n" % wot)

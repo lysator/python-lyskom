@@ -2,7 +2,7 @@
 # -*- python -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.35 2003/08/28 17:45:00 kent Exp $
+# $Id: komimportmail,v 1.36 2003/09/14 08:46:00 forsberg Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -24,7 +24,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.35 $"
+vc_revision = "$Revision: 1.36 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -75,6 +75,7 @@ def log(line, level):
 
     if level <= log_level:
         log_file.write("%d: %s\n" % (log_pid, line))
+        log_file.flush()
 
 # Newline removal:
 # newline (+ any following space/tab whitespace) becomes a single space
@@ -919,6 +920,14 @@ elif function == FUNC_IMPORT_MAIL:
                                          envelope_sender,
                                          envelope_recipients,
                                          with_hdr)
+    except ReceiveError:
+        error_exit("Receive Error, try later", EX_TEMPFAIL)
+    except OutOfmemory:
+        error_exit("Out of Memory (OutOfMemory), try later", EX_TEMPFAIL)
+    except MemoryError:
+        error_exit("MemoryError, try later", EX_TEMPFAIL)
+    except TemporaryFailure:
+        error_exit("Temporary Failure, try later", EX_TEMPFAIL)
     except:
         # Log exception to file, instead of showing it in the bounce
         (t,v,tb) = sys.exc_info()

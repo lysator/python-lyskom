@@ -499,9 +499,12 @@ class Gazonk:
                         self.send_next_clue_letter(1)
                     return
 
-            # Skall en ledtråd läggas till?
+            # Skall en ledtråd sättas in?
             m = Gazonk.re_satt_in_ledtrad.match(msg.message)
             if m and len(self.password) == 0:
+                send_message("Skriv in lösenord innan du skriver in ledtrådar.", msg.sender)
+                return
+            elif m:
                 nr = int(m.group(1))
                 clue = m.group(2)
                 message = ""
@@ -523,6 +526,9 @@ class Gazonk:
             # Skall en ledtråd läggas till?
             m = Gazonk.re_ta_bort_ledtrad.match(msg.message)
             if m and len(self.password) == 0:
+                send_message("Skriv in lösenord innan du skriver in ledtrådar.", msg.sender)
+                return
+            elif m:
                 nr = int(m.group(1))
                 message = ""
                 if nr < 1 or nr > len(self.clues):

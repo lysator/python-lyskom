@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.20 2001/03/16 20:58:56 astrand Exp $
+# $Id: kom.py,v 1.21 2001/06/16 18:28:26 astrand Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -2194,7 +2194,7 @@ class CachedUserConnection(CachedConnection):
         CachedConnection.__init__(self, host, port, user)
 
         # User number
-        self.user_no = 0
+        self._user_no = 0
         # List with those conferences the user is member of
         self.member_confs = []
 
@@ -2204,13 +2204,16 @@ class CachedUserConnection(CachedConnection):
         # FIXME: Add support for aux-items, session-information, textmappings etc.
         
     def set_user(self, user_no):
-        self.user_no = user_no
+        self._user_no = user_no
         self.member_confs = self.get_member_confs()
+
+    def get_user(self):
+        return self._user_no
 
     def get_member_confs(self):
         result = []
         # FIXME: Change want_read_texts to 0 as soon as we supports it. 
-        ms_list = ReqGetMembership(self, self.user_no, 0, 10000, want_read_texts=1).response()
+        ms_list = ReqGetMembership(self, self._user_no, 0, 10000, want_read_texts=1).response()
         for ms in ms_list:
             if (ms.priority != 0) and (not ms.type.passive):
                 result.append(ms.conference)
@@ -2225,7 +2228,7 @@ class CachedUserConnection(CachedConnection):
             return 1
         
     def fetch_membership(self, no):
-        return ReqQueryReadTexts(self, self.user_no, no).response()
+        return ReqQueryReadTexts(self, self._user_no, no).response()
     
     # NOTE: No more than 500 unread texts are examined
     def fetch_unread(self, no):
@@ -2287,7 +2290,7 @@ class CachedUserConnection(CachedConnection):
 
     def cah_new_membership(self, msg, c):
         CachedConnection.cah_new_membership(self, msg, c)
-        if msg.person_no == self.user_no:
+        if msg.person_no == self._user_no:
             self.member_confs.append(msg.conf_no)
 
     # Report cache usage

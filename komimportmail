@@ -2,7 +2,7 @@
 # -*- python -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.29 2002/03/04 21:53:58 kent Exp $
+# $Id: komimportmail,v 1.30 2002/05/05 12:06:30 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -23,7 +23,7 @@ import re
 import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.29 $"
+vc_revision = "$Revision: 1.30 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -402,11 +402,11 @@ def create_article_part(mail,
     # is that the LysKOM clients should not have to be able to
     # parse addresses in order to use Reply-To adresses, etc.
 
-    for (header_name, aux_item_1, aux_item_2, aux_item_3) in [
-        ("From", None, kom.AI_MX_FROM, kom.AI_MX_AUTHOR),
-        ("To", kom.AI_MX_TO, None, None),
-        ("Cc", kom.AI_MX_CC, None, None),
-        ("Reply-To", None, kom.AI_MX_REPLY_TO, None),
+    for (header_name, aux_item_1,   aux_item_2,         aux_item_3) in [
+        ("From",      None,         kom.AI_MX_FROM,     kom.AI_MX_AUTHOR),
+        ("To",        kom.AI_MX_TO, None,               None),
+        ("Cc",        kom.AI_MX_CC, None,               None),
+        ("Reply-To",  None,         kom.AI_MX_REPLY_TO, None),
         ]:
 
         for (display_name, addr_spec) in \
@@ -428,7 +428,7 @@ def create_article_part(mail,
                 aux_items.append(kom.AuxItem(aux_item_1, mailbox))
             if aux_item_2:
                 aux_items.append(kom.AuxItem(aux_item_2, addr_spec))
-            if aux_item_3:
+            if aux_item_3 and display_name <> "":
                 aux_items.append(kom.AuxItem(aux_item_3, display_name))
 
     # Date

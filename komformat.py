@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komformat.py,v 1.1 1999/10/18 09:12:33 kent Exp $
+# $Id: komformat.py,v 1.2 2001/08/29 13:08:51 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Format a text for display.
@@ -95,7 +95,7 @@ class Text:
 
     def get_date_time(self, t):
         return "%04d-%02d-%02d  %02d:%02d" % \
-               (t.year + 1900, t.month, t.day, t.hours, t.minutes)
+               (t.year + 1900, t.month + 1, t.day, t.hours, t.minutes)
 
 
     def get_date_time_written(self):

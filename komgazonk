@@ -851,7 +851,7 @@ class TotStats:
         self.monthly = Stats(0)
         self.cr = Stats(0)
         self.disp_stat = GAZ_DISPLAY_STATISTICS
-        self.last_sent = time.localtime(time.time())
+        self.reset_now()
 
     def reset(self):
         self.reset_now()
@@ -868,7 +868,7 @@ class TotStats:
 
     def reset_now(self, set_last_sent = 1):
         if set_last_sent == 1:
-            self.last_sent = time.localtime(time.time())
+            self.last_sent = time.time()
 
         if self.disp_stat[0] == 0 or self.disp_stat[1] <= 0:
             self.next_time = None
@@ -885,9 +885,9 @@ class TotStats:
 
         neg = 0
         if self.disp_stat[0] == 3:
-            neg = self.last_sent.tm_wday
+            neg = time.localtime(self.last_sent).tm_wday
 
-        next_time_tmp = [x for x in self.last_sent]
+        next_time_tmp = [x for x in time.localtime(self.last_sent)]
         next_time_tmp = next_time_tmp[:(time_type+1)] + first[(time_type+1):]
         next_time_tmp[time_type] += ds[1] - neg
         next_time_tmp = time.mktime(next_time_tmp)

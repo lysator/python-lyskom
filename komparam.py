@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komparam.py,v 1.1 1999/07/14 22:40:11 kent Exp $
+# $Id: komparam.py,v 1.2 1999/07/23 18:00:32 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Handle connection and login in a common way. Parameters are
@@ -40,20 +40,19 @@ class Parameters:
         name = self.get_name()
         if server is None:
             return (None, "name not specified")
-        persons = kom.ReqLookupZName(conn, name,
-                                     want_pers = 1,
-                                     want_confs = 0).response()
+        persons = conn.lookup_name(name, want_pers = 1, want_confs = 0)
         if len(persons) == 0:
             return (None, "name doesn't match anybody")
         elif len(persons) <> 1:
             return (None, "name matches %d persons" % len(persons))
+        self.person_no = persons[0][0]
         
         # Login
         password = self.get_password()
         if password is None:
             return (None, "password not specified")
         try:
-            kom.ReqLogin(conn, persons[0].conf_no, password).response()
+            kom.ReqLogin(conn, self.person_no, password).response()
         except:
             return (None, "failed to log in as %s" % persons[0].name)
 
@@ -63,6 +62,10 @@ class Parameters:
     # Get remaining arguments (after we remove our special arguments)
     def get_arguments(self):
         return self.argv[:] # FIXME!
+    
+    # Get person_no
+    def get_person_no(self):
+        return self.person_no
     
     # Semi-public interface
     

@@ -3,17 +3,17 @@ import kom
 # -- CONFIGURATION BEGINS HERE ---
 
 # How to connect to the server
-KOMSERVER = "192.168.1.12"
-KOMPORT = 4894
-KOMPERSON = 10
-KOMPASSSWORD = ""
+KOMSERVER = "localhost"     # Name or IP address
+KOMPORT = 4894		    # Port number
+KOMPERSON = FIXME           # LysKOM person number
+KOMPASSSWORD = "FIXME"      # Password of KOMPERSON
 
 # File to log some information into
-LOG_FILE = "/home/kent/lyskom/python-lyskom/maillog"
+LOG_FILE = "/FIXME/maillog"
 
 # File for message-id -> text-no database
 # Note: the actual filename depends on what database shelve.py chooses.
-ID_DB_FILE = "/home/kent/lyskom/python-lyskom/message-id"
+ID_DB_FILE = "/FIXME/message-id"
 
 # Text to prepend to subject header of appendices
 APPENDIX_SUBJECT_PREFIX_NONAME = "Bilaga till: "

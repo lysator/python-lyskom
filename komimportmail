@@ -1,6 +1,6 @@
 #!/usr/bin/python-1.5.2
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.12 1999/10/09 14:18:00 kent Exp $
+# $Id: komimportmail,v 1.13 1999/10/09 16:11:49 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -15,36 +15,10 @@ import rfc1522
 import lockingshelve
 import kom
 import os
-
-# -- CONFIGURATION BEGINS HERE ---
-
-# How to connect to the server
-KOMSERVER = "192.168.1.12"
-KOMPORT = 4894
-KOMPERSON = 10
-KOMPASSSWORD = "NXO"
-
-# File to log some information into
-LOG_FILE = "/home/kent/lyskom/python-lyskom/maillog"
-
-# File for message-id -> text-no database
-# Note: the actual filename depends on what database shelve.py chooses.
-ID_DB_FILE = "/home/kent/lyskom/python-lyskom/message-id"
-
-# Text to prepend to subject header of appendices
-APPENDIX_SUBJECT_PREFIX_NONAME = "Bilaga till: "
-APPENDIX_SUBJECT_PREFIX = "Bilaga (%s) till: "
-
-# Use comments or footnotes when linking appendices to the main article?
-APPENDIX_COMMENT_TYPE = kom.MIC_COMMENT #or kom.MIC_FOOTNOTE
-
-# Skip AI_MX_DATE (for use with buggy aux-items.conf:s)
-SKIP_AI_MX_DATE = 0
-
-# -- CONFIGURATION ENDS HERE ---
+from komimportconfig import *
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.12 $"
+vc_revision = "$Revision: 1.13 $"
 revision = vc_revision[11:-2]
 
 # Error reporting to stderr and logfile
@@ -150,6 +124,7 @@ def create_article(mail, envelope_sender, envelope_recipients,
                                   parent = None)
 
     # Handle the rest of the parts as comments to the first part
+    sub_text_nos = []
     for part in parts[1:]:
         sub_text_no = create_article_part(mail,
                                           envelope_sender,
@@ -157,6 +132,14 @@ def create_article(mail, envelope_sender, envelope_recipients,
                                           part,
                                           in_reply_to_text_no,
                                           parent = text_no)
+        sub_text_nos.append(sub_text_no)
+
+    # Now, we need to add an AI_MX_MIME_PART_IN to the first part
+    # for each appendix, as we did not know the text numbers of the
+    # appendices when we created the first part.
+    
+    if len(sub_text_nos) > 0:
+        add_mx_mime_part_in_items(text_no, sub_text_nos)
 
     # Threading. Register Message-ID -> (Text-No, creation time) mapping.
     try:
@@ -213,88 +196,90 @@ def create_article_part(mail,
         # adresses becomes more advanced than simple integers.
 
     # Handle mail headers (creating aux-items)
-    # We only put these aux-items on the main article (not on appendices).
+    # We now put these aux-items on the main article and the appendices.
 
+    # Aux-items for non-address single header fields
+    for (header_name, aux_item_type) in [
+        ("Message-ID", kom.AI_MX_MESSAGE_ID),
+        ("In-Reply-To", kom.AI_MX_IN_REPLY_TO),
+        ]:
+        if mail.headers.has_key(header_name):
+            ai = kom.AuxItem(aux_item_type,
+                             rfc1522.decode(mail.headers[header_name]))
+            aux_items.append(ai)
+
+    # Aux-items for adress header fields come in three formats:
+    #
+    # 1) Complete address including name (mailbox in the
+    #    terminology of draft-ietf-drums-msg-fmt-07.txt)
+    #    Example: "Joe Q. Public" <john.q.public@example.com>
+    #         or  john.q.public@example.com
+    #
+    # 2) Just the bare email address (called addr-spec)
+    #    Example: john.q.public@example.com
+    # 
+    # 3) Just the name (a display-name in the drums specification):
+    #    Example: Joe Q. Public
+    # 
+    # The rationale for using different formats for different aux-items
+    # is that the LysKOM clients should not have to be able to
+    # parse addresses in order to use Reply-To adresses, etc.
+
+    for (header_name, aux_item_1, aux_item_2, aux_item_3) in [
+        ("From", None, kom.AI_MX_FROM, kom.AI_MX_AUTHOR),
+        ("To", kom.AI_MX_TO, None, None),
+        ("Cc", kom.AI_MX_CC, None, None),
+        ("Reply-To", None, kom.AI_MX_REPLY_TO, None),
+        ]:
+
+        for (display_name, addr_spec) in \
+            mail.headers.getaddrlist(header_name):
+            # Remove outer double qoutes and RFC1522 coding if
+            # present in the display name.                
+            if display_name[0:1] == '"' and display_name[-1:0] == '"':
+                display_name = display_name[1:-1]
+            display_name = rfc1522.decode(display_name)
+
+            # Recreate mailbox
+            if display_name:
+                mailbox = "%s <%s>" % (display_name, addr_spec)
+            else:
+                mailbox = addr_spec
+
+            # Add aux-items of the correct type
+            if aux_item_1:
+                aux_items.append(kom.AuxItem(aux_item_1, mailbox))
+            if aux_item_2:
+                aux_items.append(kom.AuxItem(aux_item_2, addr_spec))
+            if aux_item_3:
+                aux_items.append(kom.AuxItem(aux_item_3, display_name))
+
+    # Date
+    if mail.headers.has_key("Date") and not SKIP_AI_MX_DATE:
+        parsed_date = rfc822.parsedate_tz(mail.headers["Date"])
+        if parsed_date is not None:
+            tz_mins = parsed_date[9] / 60
+            if tz_mins == 0:
+                tz = "+0000"
+            elif tz_mins > 0:
+                tz = "+%02d%02d" % (tz_mins/60, tz_mins % 60)
+            else:
+                tz_mins = -tz_mins
+                tz = "-%02d%02d" % (tz_mins/60, tz_mins % 60)
+                
+            date = "%04d-%02d-%02d %02d:%02d:%02d %s" % \
+                   (parsed_date[0], parsed_date[1], parsed_date[2],
+                    parsed_date[3], parsed_date[4], parsed_date[5],
+                    tz)
+            aux_items.append(kom.AuxItem(kom.AI_MX_DATE, date))
+
+    # The complete set of mail headers (no decoding of these)
+    # This one should not be put on the appendices:
     if parent is None:
-        # Aux-items for non-address single header fields
-        for (header_name, aux_item_type) in [
-            ("Message-ID", kom.AI_MX_MESSAGE_ID),
-            ("In-Reply-To", kom.AI_MX_IN_REPLY_TO),
-            ]:
-            if mail.headers.has_key(header_name):
-                ai = kom.AuxItem(aux_item_type,
-                                 rfc1522.decode(mail.headers[header_name]))
-                aux_items.append(ai)
-
-        # Aux-items for adress header fields come in three formats:
-        #
-        # 1) Complete address including name (mailbox in the
-        #    terminology of draft-ietf-drums-msg-fmt-07.txt)
-        #    Example: "Joe Q. Public" <john.q.public@example.com>
-        #         or  john.q.public@example.com
-        #
-        # 2) Just the bare email address (called addr-spec)
-        #    Example: john.q.public@example.com
-        # 
-        # 3) Just the name (a display-name in the drums specification):
-        #    Example: Joe Q. Public
-        # 
-        # The rationale for using different formats for different aux-items
-        # is that the LysKOM clients should not have to be able to
-        # parse addresses in order to use Reply-To adresses, etc.
-
-        for (header_name, aux_item_1, aux_item_2, aux_item_3) in [
-            ("From", None, kom.AI_MX_FROM, kom.AI_MX_AUTHOR),
-            ("To", kom.AI_MX_TO, None, None),
-            ("Cc", kom.AI_MX_CC, None, None),
-            ("Reply-To", None, kom.AI_MX_REPLY_TO, None),
-            ]:
-    
-            for (display_name, addr_spec) in \
-                mail.headers.getaddrlist(header_name):
-                # Remove outer double qoutes and RFC1522 coding if
-                # present in the display name.                
-                if display_name[0:1] == '"' and display_name[-1:0] == '"':
-                    display_name = display_name[1:-1]
-                display_name = rfc1522.decode(display_name)
-
-                # Recreate mailbox
-                if display_name:
-                    mailbox = "%s <%s>" % (display_name, addr_spec)
-                else:
-                    mailbox = addr_spec
-
-                # Add aux-items of the correct type
-                if aux_item_1:
-                    aux_items.append(kom.AuxItem(aux_item_1, mailbox))
-                if aux_item_2:
-                    aux_items.append(kom.AuxItem(aux_item_2, addr_spec))
-                if aux_item_3:
-                    aux_items.append(kom.AuxItem(aux_item_3, display_name))
-    
-        # Date
-        if mail.headers.has_key("Date") and not SKIP_AI_MX_DATE:
-            parsed_date = rfc822.parsedate_tz(mail.headers["Date"])
-            if parsed_date is not None:
-                tz_mins = parsed_date[9] / 60
-                if tz_mins == 0:
-                    tz = "+0000"
-                elif tz_mins > 0:
-                    tz = "+%02d%02d" % (tz_mins/60, tz_mins % 60)
-                else:
-                    tz_mins = -tz_mins
-                    tz = "-%02d%02d" % (tz_mins/60, tz_mins % 60)
-                    
-                date = "%04d-%02d-%02d %02d:%02d:%02d %s" % \
-                       (parsed_date[0], parsed_date[1], parsed_date[2],
-                        parsed_date[3], parsed_date[4], parsed_date[5],
-                        tz)
-                aux_items.append(kom.AuxItem(kom.AI_MX_DATE, date))
-    
-        # The complete set of mail headers (no decoding of these)
         aux_items.append(kom.AuxItem(kom.AI_MX_MISC,
                                      string.join(mail.headers.headers,
                                                  "")))
+
 
     # Handle MIME headers (creating aux-items)
     # We put these aux-items on the main article and the appendices
@@ -374,6 +359,19 @@ def send_to_kom(subject, body, misc_info, aux_items):
                 raise kom.NoSuchText, bad_text_no # hope it was set
 
     return text_no
+
+# Add an AI_MX_MIME_PART_IN to the first part
+# for each appendix.
+def add_mx_mime_part_in_items(parent_no, child_nos):
+    aux_items = []
+    for child_no in child_nos:
+        aux_items.append(kom.AuxItem(kom.AI_MX_MIME_PART_IN, str(child_no)))
+    try:
+        kom.ReqModifyTextInfo(c, parent_no, [], aux_items)
+    except kom.ServerError:
+        log("Failed (%s) to add mx-mime-part-in items" % \
+            (sys.exc_info()[0]))
+        
 
 # Add more recipients to this article
 # We do not add new aux-items, even if some headers may be different

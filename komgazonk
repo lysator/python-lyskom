@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.10"
+VERSION="0.3.11"
 
 INVISIBLE = 0
 
@@ -1014,7 +1014,7 @@ class Stats:
         letter_a = self.make_stat_letter(plist_a, \
                                          ["guesses", "win_count", "kpg", \
                                           "led", "gled", "gpk", "ggpk", "gpl", "ggpl"], \
-                                         "Statistik över personer som gissat:")
+                                         "Personstatistik sorterad över vem som klarat flest gazonk:")
 
         if self.total != 1:
             message += letter_a
@@ -1031,7 +1031,7 @@ class Stats:
 
             letter_b = self.make_stat_letter(plist_b, \
                                              ["guesses", "win_count", "kpg", "kcube_pg"], \
-                                             "Statistik över personer som gissat:")
+                                             "Bäst förhållande mellan korrekta och gissningar (k^3/g):")
             g.send_letter(subject, letter_b, GAZONK_CONF, 1, 1, [text_no])
 
             plist_c = [(negate_with_none(st.led), negate_with_none(st.gpk), \
@@ -1042,7 +1042,7 @@ class Stats:
 
             letter_c = self.make_stat_letter(plist_c, \
                                              ["guesses", "win_count", "led", "gpk", "gpl"], \
-                                             "Statistik över personer som gissat:")
+                                             "Snabbaste gazonklösarna:")
             g.send_letter(subject, letter_c, GAZONK_CONF, 1, 1, [text_no])
 
             plist_d = [(st.gled, st.ggpk, st.ggpl, p, st, psc) for (st, p, psc) in plist_all]
@@ -1052,7 +1052,7 @@ class Stats:
 
             letter_d = self.make_stat_letter(plist_d, \
                                              ["guesses", "win_count", "gled", "ggpk", "ggpl"], \
-                                             "Statistik över personer som gissat:")
+                                             "De som gör svårast gazonkningar:")
             g.send_letter(subject, letter_d, GAZONK_CONF, 1, 1, [text_no])
 
         # Now reset the stats for next period.

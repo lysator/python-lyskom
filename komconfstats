@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.17 2002/08/01 16:39:59 kent Exp $
+# $Id: komconfstats,v 1.18 2004/10/03 13:16:20 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import jddate # From the lyspython collection
 import tabulator
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.17 $"
+vc_revision = "$Revision: 1.18 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -218,7 +218,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.st.prop.title = "Inlägg"
         self.st.prop.singularis = "inlägg"
         self.st.prop.what = "ärenderad"
-        self.st.prop.max_displayed = 100
+        self.st.prop.max_displayed = 20
         sub = self.st.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
@@ -257,6 +257,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.mat.prop.title = "Kommentarer till texter i andra möten"
         self.mat.prop.singularis = "inlägg"
         self.mat.prop.what = "författare"
+        self.mat.prop.max_displayed = 5
         sub = self.mat.prop.add_sub(ConfNameTabulator)
         sub.what = "möte"
         sub = sub.add_sub(tabulator.Tabulator)
@@ -300,6 +301,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.add_report(self.rcrt, suppress = 1)
 
         # 2002-08-01: Not interesting enough
+        # 2003-04-10: Enabled again
         self.prt = ConfNameTabulator()
         self.prt.prop.title = "Inlägg mottagna av personer"
         self.prt.prop.singularis = "inlägg"
@@ -310,7 +312,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub = sub.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 10
-        self.add_report(self.prt, suppress = 1)
+        self.add_report(self.prt)
 
         # 2002-08-01: Not interesting enough
         self.rprt = tabulator.Tabulator()
@@ -383,7 +385,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.cat10.prop.singularis = "inlägg"
         self.cat10.prop.what = "författare"
         self.add_report(self.cat10)
-        self.add_report(tabulator.Report(self.cat10, relative = 1, min_total_count = 10))
+        self.add_report(tabulator.Report(self.cat10, relative = 1, min_total_count = 10), suppress = 1)
 
         # 2002-08-01: Not interesting enough
         self.ct = ConfNameTabulator()
@@ -521,7 +523,8 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub.max_displayed = 5
         self.add_report(tabulator.Report(self.dh, 1))
         self.add_report(self.dh)
-            
+
+        # Inte intressant nog 2004-09-01    
         self.dst = tabulator.Tabulator()
         self.dst.prop.title = "Inlägg"
         self.dst.prop.singularis = "inlägg"
@@ -529,7 +532,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.dst.prop.max_displayed = 20
         sub = self.dst.prop.add_sub(DateHistogram)
         sub.what = "datum"
-        self.add_report(self.dst)
+        self.add_report(self.dst, suppress=1)
      
         self.kh = tabulator.Histogram()
         self.kh.prop.title = "Inlägg"

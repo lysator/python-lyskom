@@ -1,7 +1,8 @@
-#!/sw/local/bin/python
+#!/usr/bin/env python
 # -*- python -*-
-# LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.28 2001/12/17 19:19:09 kent Exp $
+# LysKOM email import
+
+# $Id: komimportmail,v 1.29 2002/03/04 21:53:58 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -22,7 +23,7 @@ import re
 import getopt
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.28 $"
+vc_revision = "$Revision: 1.29 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -625,7 +626,7 @@ def add_comment_links(text_no, commenting_text_nos):
 #
 # Allowable recipient name formats (in the order they are checked):
 # 
-# 1) An integer or an integer prefix by a single "p" or "P".
+# 1) An integer, or an integer prefixed by a single "p" or "P".
 #    The conference/letterbox corresponding to this
 #    conf_no is the recipient. Note that an invalid integer results
 #    in a miss. No further alternatives are checked.

@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.26 2002/05/04 16:56:37 forsberg Exp $
+# $Id: kom.py,v 1.27 2002/06/16 12:08:54 astrand Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -2120,10 +2120,14 @@ class CachedConnection(Connection):
         # uconferences[].highest_local_no gets invalid. 
         self.conferences.invalidate(msg.conf_no)
         self.uconferences.invalidate(msg.conf_no)
+        # textstats.misc_info_recipient_list gets invalid as well.
+        self.textstats.invalidate(msg.text_no)
 
     def cah_sub_recipient(self, msg, c):
         # Invalid conferences[].no_of_texts
         self.conferences.invalidate(msg.conf_no)
+        # textstats.misc_info_recipient_list gets invalid as well.
+        self.textstats.invalidate(msg.text_no)
 
     def cah_new_membership(self, msg, c):
         # Joining a conference makes conferences[].no_of_members invalid

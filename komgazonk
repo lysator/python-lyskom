@@ -580,7 +580,7 @@ class Gazonk:
                 return
 
             # Avsäga sig gazonktiteln.
-            m = Gazonk.re_avsag_gazonk(msg.message)
+            m = Gazonk.re_avsag_gazonk.search(msg.message)
             if m:
                 if self.current_clue == -1:
                     my_name = kom.ReqGetUconfStat(conn, KOMPERSON).response().name

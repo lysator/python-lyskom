@@ -1,6 +1,6 @@
 # Tabulator and Histogram classes refactored out from the
 # python-lyskom program komconfstats.
-# $Id: tabulator.py,v 1.3 2002/01/24 23:25:01 kent Exp $
+# $Id: tabulator.py,v 1.4 2002/01/27 21:35:05 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 
@@ -13,6 +13,13 @@ def get_count_with_noun(count, singularis, pluralis = None):
         return "%d %s" % (count, singularis)
     else:
         return "%d %s" % (count, pluralis)
+
+# Handle double counts and nouns
+def get_counts_with_noun(count, total_count, singularis, pluralis = None):
+    if pluralis is None or (count <= 1 and total_count == 1):
+        return "%d/%d %s" % (count, total_count, singularis)
+    else:
+        return "%d/%d %s" % (count, total_count, pluralis)
 
 
 # The comments below were written when the classes were part of
@@ -54,15 +61,17 @@ def get_count_with_noun(count, singularis, pluralis = None):
 class Entry:
     def __init__(self, key, properties_ignored = None):
         self.key = key
-        self.count = 0
-
-    def tabulate(self, sub_keys):
-        self.count = self.count + 1 
+        self.count = 0 # The normal, successful things we really count
+        self.total_count = 0 # Everything, for use in relative reports
+        
+    def tabulate(self, sub_keys, normal=1, total=1):
+        self.count = self.count + normal
+        self.total_count = self.total_count + total
 
     def is_empty(self):
         return self.count == 0
 
-    def report(self, indent, levels):
+    def report(self, indent, levels, relative):
         # This is kind of faked, but it makes the code simpler...
         return []
        
@@ -75,8 +84,9 @@ class Tabulator(Entry):
         else:
             self.prop = properties
             
-    def tabulate(self, keys):
-        self.count = self.count + 1
+    def tabulate(self, keys, normal=1, total=1):
+        Entry.tabulate(self, keys, normal, total)
+
         if keys == []: return
         key = self.data_to_key(keys[0])
             
@@ -86,9 +96,9 @@ class Tabulator(Entry):
             else:
                 SubClass = self.prop.next.subclass
             self.dict[key] = SubClass(key, self.prop.next)
-        self.dict[key].tabulate(keys[1:])
+        self.dict[key].tabulate(keys[1:], normal, total)
 
-    def report(self, indent = 0, levels = None):
+    def report(self, indent = 0, levels = None, relative = 0):
         # This method is common for both normal tabulators and histograms
 
         # No report if we are past the max level
@@ -98,33 +108,52 @@ class Tabulator(Entry):
 
         if indent == 0:
             # Only the top level should have a title
-            l.append("%s (%s)" % (self.get_title(levels),
-                                  self.prop.get_count_with_noun(self.count)))
+            if relative:
+                countstr = self.prop.get_counts_with_noun(self.count,
+                                                          self.total_count)
+            else:
+                countstr = self.prop.get_count_with_noun(self.count)
+                
+            l.append("%s (%s)" % (self.get_title(levels, relative),
+                                  countstr))
             l.append("")
             self.report_extra_header(l)
 
         # Now, do the real work. Notice how "l" will be modified by
         # the addition of the report body lines.
 
-        self.report_body(l, indent, levels)
+        self.report_body(l, indent, levels, relative)
 
         return l
 
-    def get_title(self, levels = None):
-        return self.prop.get_title(levels)
+    def get_title(self, levels = None, relative = 0):
+        return self.prop.get_title(levels, relative)
 
-    def report_body(self, l, indent, levels):
+    def report_body(self, l, indent, levels, relative):
         # Specific for tabulators, overridden by histograms
         
         istr = "      " * indent # Six spaces for each level of indentation
-        sortlist = map(lambda x, d=self.dict: (-d[x].count, d[x]),
-                       self.dict.keys())
+
+        if relative:
+            # A relative report should be order by percentage
+            # As we make it an integer, we can get ties.
+            sortlist = map(lambda x, d=self.dict: \
+                           (int(-100*float(d[x].count)/d[x].total_count), d[x]),
+                           self.dict.keys())
+        else:
+            # An absolute report is ordered by the count itself
+            sortlist = map(lambda x, d=self.dict: (-d[x].count, d[x]),
+                           self.dict.keys())
         sortlist.sort()
         pos = 1
         last_occ = None 
         bailed_out = 0 # This will be set if we break because of max_displayed
         for (occ, entry) in sortlist:
-            occ = - occ
+            # An entry with count == 0 may be present if total_count > 0
+            # Skip it!
+            if entry.count == 0: continue
+            
+            occ = - occ # or percentage in relative version
             key = self.key_to_display(entry.key)
 
             if self.prop.max_displayed is not None and \
@@ -136,8 +165,19 @@ class Tabulator(Entry):
                 pos_str = str(pos)
             else:
                 pos_str = '"'
-            l.append("%s%3s) %s (%d)" % (istr, pos_str, key, occ))
-            l.extend(entry.report(indent = indent + 1, levels = levels))
+            if relative:
+                l.append("%s%3s) %s (%d%%, %d/%d)" % (istr,
+                                                         pos_str,
+                                                         key,
+                                                         occ,
+                                                         entry.count,
+                                                         entry.total_count,
+                                                         ))
+            else:
+                l.append("%s%3s) %s (%d)" % (istr, pos_str, key, occ))
+            l.extend(entry.report(indent = indent + 1,
+                                  levels = levels,
+                                  relative = relative))
             pos = pos + 1
             last_occ = occ
 
@@ -169,8 +209,10 @@ class Tabulator(Entry):
 
 
 class Histogram(Tabulator):
-    def report_body(self, l, indent, levels):
-        # Specific for histogram
+    def report_body(self, l, indent, levels, relative):
+        # Specific for histogram, overrides method in Tabulator
+
+        assert not relative # FIXME What should a relative histogram look like?
         
         istr = "      " * indent # Six spaces for each level of indentation
 
@@ -240,7 +282,9 @@ class Histogram(Tabulator):
                 l.append("%s     %-*s:%5d %s" % (istr, max_key_size, key, occ, "*" * bar_len))
 
             if entry is not None:
-                l.extend(entry.report(indent = indent + 1, levels = levels))
+                l.extend(entry.report(indent = indent + 1,
+                                      levels = levels,
+                                      relative = relative))
 
             raw_key = raw_key + 1
             
@@ -306,7 +350,11 @@ class TabulatorProperties:
     def get_count_with_noun(self, count):
         return get_count_with_noun(count, self.singularis, self.pluralis)
 
-    def get_title(self, levels):
+    def get_counts_with_noun(self, count, total_count):
+        return get_counts_with_noun(count, total_count,
+                                   self.singularis, self.pluralis)
+
+    def get_title(self, levels, relative):
         # We need to collect the "what" field from the chain of
         # TabulatorProperties:
         whatlist = []
@@ -316,8 +364,14 @@ class TabulatorProperties:
             p = p.next
         if levels is not None:
             whatlist = whatlist[:levels]
-            
-        return self.title + ": " + string.join(whatlist, ", ")
+
+        if relative:
+            relstr = "; relativt"
+        else:
+            relstr = ""
+
+        return self.title + ": " + string.join(whatlist, ", ") + relstr
+    
 
 #
 # REPORT CLASS
@@ -337,16 +391,19 @@ class TabulatorProperties:
 #
 
 class Report:
-    def __init__(self, tabulator, levels = None):
+    def __init__(self, tabulator, levels = None, relative = 0):
         self.tabulator = tabulator
         self.levels = levels
+        self.relative = relative
 
     def is_empty(self):
         return self.tabulator.is_empty()
     
     def report(self):
-        return self.tabulator.report(levels = self.levels)        
+        return self.tabulator.report(levels = self.levels,
+                                     relative = self.relative)
 
     def get_title(self):
-        return self.tabulator.get_title(levels = self.levels)        
+        return self.tabulator.get_title(levels = self.levels,
+                                        relative = self.relative)        
         

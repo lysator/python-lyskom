@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.14 2002/01/21 22:47:01 kent Exp $
+# $Id: komconfstats,v 1.15 2002/01/27 21:35:05 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import jddate # From the lyspython collection
 import tabulator
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.14 $"
+vc_revision = "$Revision: 1.15 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -329,42 +329,49 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.cat0.prop.singularis = "inlägg"
         self.cat0.prop.what = "författare"
         self.add_report(self.cat0)
+        self.add_report(tabulator.Report(self.cat0, relative = 1))
       
         self.cat1 = ConfNameTabulator()
         self.cat1.prop.title = "Inlägg med minst 1 kommentar"
         self.cat1.prop.singularis = "inlägg"
         self.cat1.prop.what = "författare"
         self.add_report(self.cat1)
+        self.add_report(tabulator.Report(self.cat1, relative = 1))
 
         self.cat2 = ConfNameTabulator()
         self.cat2.prop.title = "Inlägg med minst 2 kommentarer"
         self.cat2.prop.singularis = "inlägg"
         self.cat2.prop.what = "författare"
         self.add_report(self.cat2)
+        self.add_report(tabulator.Report(self.cat2, relative = 1))
 
         self.cat3 = ConfNameTabulator()
         self.cat3.prop.title = "Inlägg med minst 3 kommentarer"
         self.cat3.prop.singularis = "inlägg"
         self.cat3.prop.what = "författare"
         self.add_report(self.cat3)
+        self.add_report(tabulator.Report(self.cat3, relative = 1))
 
         self.cat4 = ConfNameTabulator()
         self.cat4.prop.title = "Inlägg med minst 4 kommentarer"
         self.cat4.prop.singularis = "inlägg"
         self.cat4.prop.what = "författare"
         self.add_report(self.cat4)
+        self.add_report(tabulator.Report(self.cat4, relative = 1))
 
         self.cat5 = ConfNameTabulator()
         self.cat5.prop.title = "Inlägg med minst 5 kommentarer"
         self.cat5.prop.singularis = "inlägg"
         self.cat5.prop.what = "författare"
         self.add_report(self.cat5)
+        self.add_report(tabulator.Report(self.cat5, relative = 1))
 
         self.cat10 = ConfNameTabulator()
         self.cat10.prop.title = "Inlägg med minst 10 kommentarer"
         self.cat10.prop.singularis = "inlägg"
         self.cat10.prop.what = "författare"
         self.add_report(self.cat10)
+        self.add_report(tabulator.Report(self.cat10, relative = 1))
 
         self.ct = ConfNameTabulator()
         self.ct.prop.title = "Kommentarer"
@@ -705,21 +712,28 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         # Tabulate things that depend on the comment(s)
         no_c = len(ts.misc_info.comment_in_list)
         self.kh.tabulate([no_c])
+        self.cat0.tabulate([ts.author], normal = 0)
+        self.cat1.tabulate([ts.author], normal = 0)
+        self.cat2.tabulate([ts.author], normal = 0)
+        self.cat3.tabulate([ts.author], normal = 0)
+        self.cat4.tabulate([ts.author], normal = 0)
+        self.cat5.tabulate([ts.author], normal = 0)
+        self.cat10.tabulate([ts.author], normal = 0)
         if no_c == 0:
-            self.cat0.tabulate([ts.author])
+            self.cat0.tabulate([ts.author], total = 0)
         else:
             if no_c >= 1:
-                self.cat1.tabulate([ts.author])
+                self.cat1.tabulate([ts.author], total = 0)
                 if no_c >= 2:
-                    self.cat2.tabulate([ts.author])
+                    self.cat2.tabulate([ts.author], total = 0)
                     if no_c >= 3:
-                        self.cat3.tabulate([ts.author])
+                        self.cat3.tabulate([ts.author], total = 0)
                         if no_c >= 4:
-                            self.cat4.tabulate([ts.author])
+                            self.cat4.tabulate([ts.author], total = 0)
                             if no_c >= 5:
-                                self.cat5.tabulate([ts.author])
+                                self.cat5.tabulate([ts.author], total = 0)
                                 if no_c >= 10:
-                                    self.cat10.tabulate([ts.author])
+                                    self.cat10.tabulate([ts.author], total = 0)
 
         # Get the text and tabulate the words (max size=1024*1024)
 

@@ -36,7 +36,13 @@ PIDFILE = "/FIXME/komgazonk.pid"
 # another letter (in seconds).
 MAX_SLEEP_TIME = 60
 # Time between clues (in seconds).
-GAZONK_CLUE_TIME = 86400 # (24 hours)
+GAZONK_CLUE_TIME = 61200 # (17 hours, which with the night time corresponds to one day)
+# Define to one if you want to allow gazonk to change clue time interval.
+GAZONK_CT_ALLOW_CHANGE = 1
+# Define to the minimum time to allow as time between clues.
+GAZONK_CT_MINIMUM = 21600 # (6 hours, remember nighttime)
+# Define to the minimum time to allow as time between clues.
+GAZONK_CT_MAXIMUM = 100800 # (28 hours, remember nighttime)
 # Time between each reminder (in seconds).
 GAZONK_REMEMBER_TIME = 86400 # (24 hours)
 # Allowed characters in the password.

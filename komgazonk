@@ -4,6 +4,9 @@
 
 # (C) 2002 Ragnar Ouchterlony. Released under GPL.
 
+# A modern python is necessary for running.
+# Tested on python2.2 under solaris and linux.
+
 import kom
 import time
 import select
@@ -16,13 +19,14 @@ from komgazonk_config import *
 import cPickle
 import random
 import copy
+import pprint
 
 CLIENTNAME="komgazonk"
-VERSION="0.2.3"
+VERSION="0.3.0"
 
 INVISIBLE = 1
 
-MAX_ENTRIES_GUESS_LIST = 300
+MAX_ENTRIES_GUESS_LIST = -1
 
 wrong_guess_list = ["Fel, fel, fel, fel!", \
                     "Nepp!", \
@@ -88,8 +92,15 @@ Om du är gazonk:
 'byt ledtråd <nr> <en ledtråd>: Byter ut en ledtråd mot en annan.
 'gissningar':                   Visar alla gissningar för nuvarande
                                 gazonkning.
-'gissningar <ledtrådsnr>        Visar alla gissningar för på den
+'gissningar personer':          Visar en tabell över vilka som gissat
+                                och hur mycket de har gissat.
+'gissningar <ledtrådsnr>':      Visar alla gissningar för på den
                                 ledtråden.
+'tidsintervall <antal>[hms]':   Sätter tidsintervallet som ledtrådar
+                                skall komma med.
+'återställ tidsintervall':      Återställer tidsintervallet till det det
+                                var från början.
+
 Om du inte är gazonk:
 ---------------------
 'gissa <gissning>:              Gissa på lösenordet.
@@ -121,7 +132,9 @@ class Gazonk:
     re_gissning = re.compile("^[" + GAZ_PW_CHARS + "]{1," + str(GAZ_PW_LENGTH) + "}$")
     re_ledtrad = re.compile("^ledtråd( *| +(.+))$", re.IGNORECASE)
     re_byt_ledtrad = re.compile("^byt ledtråd +([0-9]+) +(.+)$", re.IGNORECASE)
-    re_gissningar = re.compile("^gissningar *([0-9]*) *$")
+    re_gissningar = re.compile("^gissningar *([0-9]*|personer)$")
+    re_tidsintervall = re.compile("^tidsintervall *([0-9]*)([hms]) *$")
+    re_ater_tidsintervall = re.compile("^återställ tidsintervall$")
     re_gissa = re.compile("^gissa *(.*) *$")
     re_vem = re.compile("^vem$", re.IGNORECASE)
     re_visa = re.compile("^visa$", re.IGNORECASE)
@@ -138,6 +151,9 @@ class Gazonk:
         self.tstats = TotStats()
         self.current_guesses = GuessDB()
         self.reset()
+        self.version = VERSION
+        self.is_night = 0
+        self.night_started = -1
 
     def reset(self):
         self.person_no = -1
@@ -149,15 +165,27 @@ class Gazonk:
         self.last_text_no = -1
         self.current_guesses.reset()
         self.per_clue_guesses = []
+        self.current_guessers = {}
+        self.current_time_interval = GAZONK_CLUE_TIME
 
     def set_last_action(self):
         self.time_last_action = time.time()
 
     def set_current_time(self, is_night):
-        c_t = time.time()
-        if is_night:
-            gaz.time_last_action += c_t - self.current_time
-        self.current_time = c_t
+        ct = time.time()
+        now_is_night = GAZ_SLEEP_HOURS.count(time.localtime(ct).tm_hour) > 0
+        if self.is_night != now_is_night:
+            if now_is_night:
+                # Natten börjar nu.
+                self.night_started = ct
+            else:
+                # Natten slutar nu.
+                # Gör om det till hela timmar.
+                night_hours = round(self.night_started/3600.0)*3600.0
+                gaz.time_last_action += ct - night_hours
+                self.night_started = -1
+            self.night = now_is_night
+        self.current_time = time.time()
 
     def create_guess_list_string(self, max_nr = MAX_ENTRIES_GUESS_LIST):
         message = ""
@@ -199,6 +227,24 @@ class Gazonk:
             clue_string += print_clue(c, i) + "\n"
         return clue_string
 
+    def create_who_string(self):
+        wholist = zip(self.current_guessers.values(), self.current_guessers.keys())
+
+        who_string = "Gissningar fördelade på personer:\n"
+        who_string += "---------------------------------\n"
+        if len(wholist) == 0:
+            return who_string + "Inga personer har gissat.\n"
+
+        wtmp = [(-n, kom.ReqGetUconfStat(conn, s).response().name) for n,s in wholist]
+        wtmp.sort()
+        wholist = [(-n,s) for n,s in wtmp]
+
+        for (amount, person_str) in wholist:
+            who_string += string.ljust(person_str[0:22], 23) + " " + \
+                          string.rjust(str(amount), 4) + "\n"
+
+        return who_string
+
     def send_end_of_round_message(self, subject, message):
         self.tstats.end_round()
         message += "\n\nLösenordet var '%s'.\n\n" % self.password
@@ -206,7 +252,8 @@ class Gazonk:
         message += self.create_clue_string(0)
         message += "\nIcke givna ledtrådar:\n"
         message += self.create_clue_string(2) + "\n"
-        message += self.create_guess_list_string(MAX_ENTRIES_GUESS_LIST)
+        message += self.create_guess_list_string(MAX_ENTRIES_GUESS_LIST) + "\n"
+        message += self.create_who_string()
         self.send_letter(subject, message, GAZONK_CONF, 0, 0)
 
     def send_next_clue_letter(self, dont_increase = 0):
@@ -267,11 +314,15 @@ class Gazonk:
             self.tstats.new_round()
             return
 
+        # Om det är natt skall vi inte skicka ut nya ledtrådar och varningar.
+        if self.is_night:
+            return
+
         current_time = time.time()
         # Skall vi skicka ut en ny ledtråd?
         if self.current_clue > -1 and \
            len(self.clues) > self.current_clue + 1 and \
-           current_time - self.time_last_action > GAZONK_CLUE_TIME:
+           current_time - self.time_last_action > self.current_time_interval:
             self.send_next_clue_letter()
             self.set_last_action()
             self.warnings_sent = 0
@@ -420,6 +471,8 @@ class Gazonk:
                     message = "Alla gissningar:\n"
                     message += "----------------------------\n"
                     message += self.current_guesses.create_string(MAX_ENTRIES_GUESS_LIST, "Totalt")
+                elif nr == "personer":
+                    message = self.create_who_string()
                 else:
                     nr = int(nr)
                     if nr < 1 or nr > self.current_clue + 1:
@@ -433,6 +486,30 @@ class Gazonk:
                         message += gdb.create_string(MAX_ENTRIES_GUESS_LIST)
                 send_message(message, msg.sender)
                 return
+
+            # Ställ om tidsintervallet.
+            m = Gazonk.re_tidsintervall.match(msg.message)
+            if m:
+                amount = int(m.group(1))
+                hms = m.group(2)
+                if hms == "h":
+                    amount *= 3600
+                elif hms == "m":
+                    amount *= 60
+
+                amount = min(amount, GAZONK_CT_MAXIMUM)
+                amount = max(amount, GAZONK_CT_MINIMUM)
+                self.current_time_interval = amount
+                send_message("Tidsintervallet är nu %d sekunder mellan varje ledtråd" % amount, \
+                             msg.sender)
+
+            # Ställ tillbaka tidsintervallet.
+            m = Gazonk.re_ater_tidsintervall.search(msg.message)
+            if m:
+                self.current_time_interval = GAZONK_CLUE_TIME
+                send_message("Tidsintervallet är nu %d sekunder mellan varje ledtråd" % \
+                             self.current_time_interval, \
+                             msg.sender)
 
         # Saker som alla får göra:
 
@@ -463,11 +540,21 @@ class Gazonk:
             if self.current_clue == -1:
                 send_message("Ingen gazonk-omgång pågår just nu.", msg.sender)
                 return
-            elif current_time - self.time_last_action > GAZONK_CLUE_TIME:
+            elif self.is_night:
+                current_hour = time.localtime(current_time).tm_hour
+                while GAZ_SLEEP_HOURS.count(current_hour) > 0:
+                    current_hour += 1
+                send_message("Just nu är gazonk i natt-läge och " + \
+                             "då skickas inga nya ledtrådar.\n" + \
+                             "Gazonk kommer övergå i dagläge igen kl. %d:00" % current_hour, \
+                             msg.sender)
+                return
+            elif current_time - self.time_last_action > self.current_time_interval:
                 send_message("Nästa ledtråd borde redan ha sänts, tjata på gazonk!", msg.sender)
                 return
             else:
-                next_clue_time = self.time_last_action + GAZONK_CLUE_TIME - current_time
+                next_clue_time = self.time_last_action + \
+                                 self.current_time_interval - current_time
                 message = "Det är %d timmar och %d minuter kvar till nästa ledtråd" % \
                           divmod(next_clue_time/60,60)
                 send_message(message, msg.sender)
@@ -521,6 +608,11 @@ class Gazonk:
                              msg.sender)
                 return
 
+            # Lägg till en gissning för denna omgång för personen i fråga.
+            if self.current_guessers.has_key(msg.sender):
+                self.current_guessers[msg.sender] += 1
+            else:
+                self.current_guessers[msg.sender] = 1
 
             if guess == self.password:
                 # Lägg till gissningen i lite gissningsdatabaser.
@@ -828,9 +920,9 @@ class PersonStats:
         else:
             message += extra
 
-        message += "\nTop 50 gissningar:\n"
+        message += "\nTop 50 gissningar (fler än 2):\n"
         message += "------------------\n"
-        message += self.guesses.create_string(50)
+        message += self.guesses.create_string(50, min_amount = 2)
         send_message(message, person_no)
 
 # Liten klass för att hålla reda på ord.
@@ -859,14 +951,20 @@ class GuessDB:
             else:
                 self.db[guess] += other.db[guess]
 
-    def create_string(self, max_nr = MAX_ENTRIES_GUESS_LIST, total_word = "Sammanlagt"):
+    def create_string(self, max_nr = -1, \
+                      total_word = "Sammanlagt", min_amount = -1):
         glist = zip(self.db.values(), self.db.keys())
+        if min_amount > 0:
+            glist = filter( (lambda (x,y): x >= min_amount), glist )
+
         gtmp = [(-n,s) for n,s in glist]
         gtmp.sort()
         glist = [(-n,s) for n,s in gtmp]
 
+        if max_nr > 0:
+            glist = glist[:max_nr]
         guess_string = ""
-        for (amount, guess) in glist[:max_nr]:
+        for (amount, guess) in glist:
             guess_string += string.ljust(guess, min(GAZ_PW_LENGTH + 9, 60)) + \
                             " " + string.rjust(str(amount), 5) + "\n"
         if self.count == 0:
@@ -1004,9 +1102,31 @@ if LOG == 1:
 
 # Skapa en gazonk-information
 if os.path.exists(DUMPFILE):
+    log("Loading dumpfile")
     gaz = cPickle.load(open(DUMPFILE))
+
+    # Kolla dump-filens versionsnummer för att se om funktionalitet lagts
+    # till sedan dess. Om inget versionsnummer finnes antas det vara
+    # 0.2.3 (dvs sista versionen utan versionsnummer inbyggt).
+    old_version = getattr(gaz, "version", "0.2.3")
+    if old_version != VERSION:
+        log("Converting dumpfile of version %s to be uptodate." % old_version)
+        # Dumpfilen är gjord av en gammal komgazonk. Uppgradera!
+        old_version = [int(x) for x in old_version.split(".")]
+        # Om gamla versionsnumret är mindre än 0.3.0
+        if old_version < [0,3,0]:
+            log("Add things from version 0.3.0.")
+            gaz.is_night = 0
+            gaz.night_started = -1
+            gaz.current_time_interval = GAZONK_CLUE_TIME
+            gaz.current_guessers = {}
+
+        # Uppdatera versionsnumret
+        gaz.version = VERSION
 else:
     gaz = Gazonk();
+
+sys.exit(0);
 
 # Koppla upp sig, logga in och annat kul
 log("Kopplar upp")
@@ -1016,9 +1136,11 @@ kom.ReqLogin(conn, KOMPERSON, KOMPASSWORD, INVISIBLE).response()
 kom.ReqSetClientVersion(conn, CLIENTNAME, VERSION)
 log("Gazonk!")
 
-# Se hur lång tid vi har varit nere.
+# Den tiden vi varit nere skall inte räknas.
 if gaz.current_time >= 0.0:
     gaz.time_last_action += time.time() - gaz.current_time
+    if gaz.night_started != -1:
+        gaz.night_started += time.time() - gaz.current_time
 
 if GAZ_DISPLAY_STATISTICS != gaz.tstats.disp_stat or \
    GAZ_DISPLAY_STATISTICS < 1:
@@ -1033,13 +1155,11 @@ msleep = MAX_SLEEP_TIME
 while 1:
     select.select([conn.socket], [], [], msleep)
     msleep = MAX_SLEEP_TIME
-    ct = time.time()
-    is_night = GAZ_SLEEP_HOURS.count(time.localtime(ct).tm_hour) > 0
-    gaz.set_current_time(is_night)
+    gaz.set_current_time()
     conn.parse_present_data()
     gaz.check_clues()
     gaz.check_monthly()
-    if is_night:
+    gaz.set_current_time()
+    if gaz.is_night:
         msleep = MAX_SLEEP_TIME_NIGHT
-    gaz.set_current_time(is_night)
     cPickle.dump(gaz, open(DUMPFILE, 'w'), DUMPBIN)

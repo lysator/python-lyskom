@@ -59,7 +59,14 @@ Om du är Gazonk:
    6. Under pågående omgång kan man som gazonk få reda på vad folk har
       gissat på. Kommandot 'gissningar' ger alla gissningar för omgången
       medan kommandot 'gissningar <nr>' ger alla gissningar för just den
-      ledtråden.
+      ledtråden. Slutligen ger 'gissningar personer' vilka personer som
+      gissat och hur mycket de gissat.
+
+   7. Du kan ändra längden på intervallet som ledtrådar kan skickas med om
+      du har många ledtrådar kan en kortare tid passa bättre. Detta gör du
+      med kommandot 'tidsintervall <antal>[hms]' där h står för timmar, m
+      för minuter och s för sekunder. Detta går också att återställla till
+      det normala värdet genom kommandor 'återställ tidsintervall'.
 
 Om du inte är Gazonk:
 

@@ -12,6 +12,10 @@ Kommandon som alla kan göra:
    1. 'Hjälp':
       Visar en trevlig hjälp-text.
 
+   2. 'Hjälp statistik':
+      Visar en trevlig hjälp-text med förklaringar över förkortningar
+      i statistiken.
+
    2. 'Vem':
       Detta skriver du för att ta reda på vem som är Gazonk för
       tillfället.
@@ -26,6 +30,9 @@ Kommandon som alla kan göra:
       'statistik <person>'. Den första varianten visar statistik
       för dig själv och den andra tar en valfri person och visar
       statistik för.
+
+   6. 'Gamla lösenord':
+      Kan man använda för att se de senaste 50 lösenorden.
 
 Om du är Gazonk:
 
@@ -63,3 +70,21 @@ Om du inte är Gazonk:
 
 Om ingen är Gazonk så är det först till kvarn som gäller och kommandot som
 används för att bli Gazonk då är 'ny gazonk'
+
+
+Förklaringar till den statistik som ges periodvis:
+
+Gissn  = antal gissningar
+Korr   = antal korrekta gissningar
+k/g    = andel korrekta gissningar (procent)
+Led    = antal ledtrådar som behövts i snitt för att klara lösenordet
+GLed   = antal ledtrådar motståndarna behövt i snitt för att klara
+         lösenordet när personen är gazonk
+g/k    = antal gissningar i snitt för att klara ett lösenord
+Gg/k   = antal gissningar i snitt motståndarna behöver för att klara
+         lösenordet när personen är gazonk
+g/l    = antal gissningar i snitt per given ledtråd för att
+         klara ett lösenord
+Gg/l   = antal gissningar i snitt per given ledtråd motståndarna
+         behöver för att klara lösenordet när personen är gazonk
+Person = för denna person

@@ -17,7 +17,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.1.4"
+VERSION="0.2.0"
 
 INVISIBLE = 1
 
@@ -69,11 +69,13 @@ wrong_guess_list = ["Fel, fel, fel, fel!", \
 
 help_string = """Möjliga kommandon:
 ------------------
-'hjälp':     Skicka detta hjälpmeddelande.
-'vem':       Talar om vem som är gazonk.
-'visa':      Listar givna ledtrådar.
-'nästa':     Talar om hur långt det är kvar till nästa ledtråd.
-'statistik': Visar lite staitistik om ditt gazonkande.
+'hjälp':              Skicka detta hjälpmeddelande.
+'hjälp statistik':    Skicka ett hjälpmeddelande om statistiken.
+'vem':                Talar om vem som är gazonk.
+'visa':               Listar givna ledtrådar.
+'nästa':              Talar om hur långt det är kvar till nästa ledtråd.
+'gamla lösenord':     Visar en lista på de 50 senaste lösenorden.
+'statistik':          Visar lite staitistik om ditt gazonkande.
 'statistik <person>': Visar statistik om given person.
 
 Om du är gazonk:
@@ -93,26 +95,45 @@ Om du inte är gazonk:
 '<gissning>:                    Samma som ovan.
 'ny gazonk':                    Bli gazonk, om ingen är gazonk redan."""
 
+help_stats_string = """Gissn  = antal gissningar
+Korr   = antal korrekta gissningar
+k/g    = andel korrekta gissningar (procent)
+Led    = antal ledtrådar som behövts i snitt för att klara lösenordet
+GLed   = antal ledtrådar motståndarna behövt i snitt för att klara
+         lösenordet när personen är gazonk
+g/k    = antal gissningar i snitt för att klara ett lösenord
+Gg/k   = antal gissningar i snitt motståndarna behöver för att klara
+         lösenordet när personen är gazonk
+g/l    = antal gissningar i snitt per given ledtråd för att
+         klara ett lösenord
+Gg/l   = antal gissningar i snitt per given ledtråd motståndarna
+         behöver för att klara lösenordet när personen är gazonk
+Person = för denna person"""
+
+
 class Gazonk:
     re_auto_reply = re.compile("^Auto-reply:", re.IGNORECASE)
-    re_ny_gazonk = re.compile("^ny gazonk", re.IGNORECASE)
+    re_ny_gazonk = re.compile("^ny gazonk$", re.IGNORECASE)
     re_losenord_a = re.compile("^lösenord", re.IGNORECASE)
     re_losenord_b = re.compile("^[Ll][Öö][Ss][Ee][Nn][Oo][Rr][Dd] *([" + GAZ_PW_CHARS + \
                                "]{1," + str(GAZ_PW_LENGTH) + "}) *$")
     re_gissning = re.compile("^[" + GAZ_PW_CHARS + "]{1," + str(GAZ_PW_LENGTH) + "}$")
-    re_ledtrad = re.compile("^ledtråd *(.*) *$", re.IGNORECASE)
-    re_byt_ledtrad = re.compile("^byt ledtråd *([0-9]+) *(.*) *$", re.IGNORECASE)
+    re_ledtrad = re.compile("^ledtråd( *| +(.+))$", re.IGNORECASE)
+    re_byt_ledtrad = re.compile("^byt ledtråd +([0-9]+) +(.+)$", re.IGNORECASE)
     re_gissningar = re.compile("^gissningar *([0-9]*) *$")
     re_gissa = re.compile("^gissa *(.*) *$")
-    re_vem = re.compile("^vem", re.IGNORECASE)
-    re_visa = re.compile("^visa", re.IGNORECASE)
-    re_nasta = re.compile("^nästa", re.IGNORECASE)
-    re_hjalp = re.compile("^hjälp", re.IGNORECASE)
+    re_vem = re.compile("^vem$", re.IGNORECASE)
+    re_visa = re.compile("^visa$", re.IGNORECASE)
+    re_nasta = re.compile("^nästa$", re.IGNORECASE)
+    re_hjalp = re.compile("^hjälp$", re.IGNORECASE)
+    re_hjalp_statistik = re.compile("^hjälp statistik$", re.IGNORECASE)
+    re_gamla_losenord = re.compile("^gamla lösenord$", re.IGNORECASE)
     re_statistik = re.compile("^statistik *(.*) *$", re.IGNORECASE)
 
     def __init__(self):
         self.startup_time = time.time()
         self.current_time = time.time()
+        self.password_history = []
         self.tstats = TotStats()
         self.current_guesses = GuessDB()
         self.reset()
@@ -309,6 +330,12 @@ class Gazonk:
             send_message(help_string, msg.sender)
             return
 
+        # Behöver man hjälp med statistiken?
+        m = Gazonk.re_hjalp_statistik.search(msg.message)
+        if m:
+            send_message(help_stats_string, msg.sender)
+            return
+
         # Saker som endast kan göras om ingen gazonk finns:
         if self.person_no == -1:
             # Är detta en request för ny gazonk?
@@ -356,9 +383,9 @@ class Gazonk:
                 send_message("Skriv in lösenord innan du skriver in ledtrådar.", msg.sender)
                 return
             elif m:
-                clue = m.group(1)
-                if len(clue) != 0:
-                    self.clues.append(m.group(1))
+                clue = m.group(2)
+                if clue != None:
+                    self.clues.append(clue)
                     self.tstats.new_clue()
                 self.send_clue_message(msg.sender, 1)
                 return
@@ -381,6 +408,7 @@ class Gazonk:
                         self.send_next_clue_letter(1)
                     return
 
+            # Visa gissningar för olika personer.
             m = Gazonk.re_gissningar.match(msg.message)
             if m:
                 nr = m.group(1)
@@ -436,11 +464,22 @@ class Gazonk:
                 return
             else:
                 next_clue_time = self.time_last_action + GAZONK_CLUE_TIME - current_time
-                (hours, minutes) = divmod(next_clue_time/60, 60)
                 message = "Det är %d timmar och %d minuter kvar till nästa ledtråd" % \
                           divmod(next_clue_time/60,60)
                 send_message(message, msg.sender)
                 return
+
+        # Visa de 50 senaste lösenorden.
+        m = Gazonk.re_gamla_losenord.search(msg.message)
+        if m:
+            if len(self.password_history) == 0:
+                send_message("Inga lösenord har klarats än.",msg.sender)
+            message = "De 50 senast använda lösenorden:\n"
+            message += "--------------------------------\n"
+            for pw in self.password_history:
+                message += pw + "\n"
+            send_message(message,msg.sender)
+            return
 
         # Statistik om en person.
         m = Gazonk.re_statistik.match(msg.message)
@@ -480,7 +519,9 @@ class Gazonk:
 
 
             if guess == self.password:
-                self.tstats.add_guess(guess, msg.sender, self.person_no, 1, self.current_clue+1)
+                self.tstats.add_guess(guess, msg.sender, self, 1, self.current_clue+1)
+                self.password_history[0:0] = [self.password]
+                self.password_history = self.password_history[0:50]
                 send_message("Grattis, Du gissade rätt!\nDu är nu ny gazonk!", msg.sender)
                 gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
                 new_gaz_name = kom.ReqGetUconfStat(conn, msg.sender).response().name
@@ -496,7 +537,7 @@ class Gazonk:
                 # Lägg till gissningen i lite gissningsdatabaser.
                 self.current_guesses.add(guess)
                 self.per_clue_guesses[self.current_clue].add(guess)
-                self.tstats.add_guess(guess, msg.sender, self.person_no, 0, 0)
+                self.tstats.add_guess(guess, msg.sender, self, 0, 0)
                 send_message(random.choice(wrong_guess_list), msg.sender)
                 return
 
@@ -510,7 +551,7 @@ class TotStats:
         self.monthly = Stats(0)
         self.cr = Stats(0)
         self.disp_stat = GAZ_DISPLAY_STATISTICS
-        self.now = self.get_now_num()
+        self.now = get_now_num(self.disp_stat)
 
     def reset(self):
         self.reset_now()
@@ -518,7 +559,7 @@ class TotStats:
 
     def reset_now(self):
         self.disp_stat = GAZ_DISPLAY_STATISTICS
-        self.now = self.get_now_num()
+        self.now = get_now_num(self.disp_stat)
 
     def new_round(self):
         self.cr.new_round()
@@ -534,15 +575,8 @@ class TotStats:
         self.monthly.merge_into(self.cr)
         self.cr.reset()
 
-    def add_guess(self, guess, person, gazonk, win = 0, cluenr = 0):
-        self.cr.add_guess(guess, person, gazonk, win, cluenr)
-
-    def get_now_num(self):
-        if self.disp_stat == 0:
-            return -1
-        tmptime = time.localtime(time.time())
-        tmpconv = {0: -1, 1: 3, 2: 2, 3: 6, 4: 1, 5: 0}
-        return tmptime[tmpconv[self.disp_stat]]
+    def add_guess(self, guess, person, g, win = 0, cluenr = 0):
+        self.cr.add_guess(guess, person, g, win, cluenr)
 
     def send_person_stats(self, person, about_person = None):
         if about_person == None:
@@ -555,7 +589,7 @@ class TotStats:
                     if self.cr.people.has_key(person):
                         nstats.merge_into(self.cr.people[person])
                 else:
-                    nstats = copy.deepcopy(self.cr.perople[person])
+                    nstats = copy.deepcopy(self.cr.people[person])
                 nstats.send_person_stats(person)
         else:
             if not self.total.people.has_key(about_person[0]):
@@ -566,7 +600,7 @@ class TotStats:
     def check(self, g):
         if self.disp_stat == 0:
             return
-        current = self.get_now_num()
+        current = get_now_num(self.disp_stat)
         if current != self.now:
             # It is a new hour/day/week/month/year, so display stats.
             self.monthly.send_stat_letter(self, g)
@@ -596,16 +630,17 @@ class Stats:
     def new_clue(self):
         self.clue_count += 1
 
-    def add_guess(self, guess, person, gazonk, win = 0, cluenr = 0):
+    def add_guess(self, guess, person, g, win = 0, cluenr = 0):
         self.guesses.add(guess)
         if not self.people.has_key(person):
             self.people[person] = PersonStats()
         self.people[person].add_guess(guess, person, win, cluenr)
         if win == 1:
             self.acoc.add(cluenr)
-            if not self.people.has_key(gazonk):
-                self.people[gazonk] = PersonStats()
-            self.people[gazonk].m_coc_mg.add(cluenr)
+            if not self.people.has_key(g.person_no):
+                self.people[g.person_no] = PersonStats()
+            self.people[g.person_no].m_coc_mg.add(cluenr)
+            self.people[g.person_no].gpk_coc_mg.add(g.current_guesses.count + 1)
 
     def merge_into(self, other):
         self.round_count += other.round_count
@@ -636,7 +671,7 @@ class Stats:
                        self.round_count)
             message += "avslutats och det har gjorts totalt %d gissningar på sammanlagt\n" % \
                       self.guesses.count
-            message += "%d givna ledtrådar. Totalt %d ledtrådar angavs." % \
+            message += "%d givna ledtrådar. Totalt %d ledtrådar angavs.\n\n" % \
                        (self.given_clue_count, self.clue_count)
         else:
             subject = "Statistik för den senaste %s." % mbest
@@ -645,71 +680,79 @@ class Stats:
                       (dd, mbest, self.round_count)
             message += "det har gjorts totalt %d gissningar på sammanlagt %d givna\n" % \
                        (self.guesses.count, self.given_clue_count)
-            message += "ledtrådar. Totalt %d ledtrådar angavs." % \
+            message += "ledtrådar. Totalt %d ledtrådar angavs.\n\n" % \
                        self.clue_count
 
         acocnum = self.acoc.get()
-        if acocnum == None:
-            message += "\n\n"
-        else:
-            message += " Antalet ledtrådar\n"
-            message += "som behövts i snitt innan lösenordet klarades var %2.1f\n\n" % \
-                       self.acoc.get()
+        if acocnum != None and self.round_count > 0 and self.given_clue_count > 0:
+            message += "Antalet ledtrådar som behövts i snitt innan lösenordet klarades\n"
+            message += "var %3.1f." % acocnum
+            message += " Antal gissningar för att klara ett lösenord var %3.1f\ni snitt." % \
+                       (float(self.guesses.count)/float(self.round_count))
+            message += " Antal gissningar per given ledtråd var %3.1f.\n\n" % \
+                       (float(self.guesses.count)/float(self.given_clue_count))
 
-        message += """Gissn  = antal gissningar
-Korr   = antal korrekta gissningar
-k/g    = andel korrekta gissningar (procent)
-Led    = antal ledtrådar som behövts i snitt för att klara lösenordet
-GLed   = antal ledtrådar motståndarna behövt i snitt för att klara
-         lösenordet när personen är gazonk
-person = för denna person
-
-Statistik över personer som gissat:
+        message += """Statistik över personer som gissat:
 -----------------------------------
- Gissn Korr    k/g   Led GLed person
+ Gissn Korr    k/g   Led GLed   g/k  Gg/k   g/l  Gg/l Person
 """
 
         plist_tmp = zip(self.people.values(), self.people.keys())
-        plist = [(value.guesses.count, key, value) for (value,key) in plist_tmp]
+        plist = [(value.win_count, \
+                  divide_with_zero(value.win_count, value.guesses.count), \
+                  value.guesses.count, key, value) for (value,key) in plist_tmp]
         plist.sort()
         plist.reverse()
 
-        for (guesscount, person, pstats) in plist:
+        for (korr, kpgn, guesscount, person, pstats) in plist:
             pname = kom.ReqGetUconfStat(conn, person).response().name
+
             kpg = ""
-            if guesscount > 0:
-                kpg = "%3.2f%%" % (float(pstats.win_count)/float(guesscount)*100.0)
+            if kpgn != None:
+                kpg = "%3.2f%%" % (kpgn*100.0)
+
             nled = pstats.m_coc.get()
             led = ""
             if nled != None:
                 led = "%2.1f" % nled
+
             ngled = pstats.m_coc_mg.get()
             gled = ""
             if ngled != None:
                 gled = "%2.1f" % ngled
+
+            ngpk = pstats.gpk_coc.get()
+            gpk = ""
+            gpl = ""
+            if ngpk != None:
+                gpk = "%3.1f" % ngpk
+                if nled != None:
+                    gpl = "%3.1f" % (ngpk/nled)
+
+            nggpk = pstats.gpk_coc_mg.get()
+            ggpk = ""
+            ggpl = ""
+            if nggpk != None:
+                ggpk = "%3.1f" % nggpk
+                if ngled != None:
+                    ggpl = "%3.1f" % (nggpk/ngled)
+
             row = string.rjust(str(guesscount),6) + " " + \
-                  string.rjust(str(pstats.win_count),4) + " " + \
+                  string.rjust(str(korr),4) + " " + \
                   string.rjust(kpg, 7) + " " + \
                   string.rjust(led, 4) + " " + \
                   string.rjust(gled, 4) + " " + \
+                  string.rjust(gpk, 5) + " " + \
+                  string.rjust(ggpk, 5) + " " + \
+                  string.rjust(gpl, 5) + " " + \
+                  string.rjust(ggpl, 5) + " " + \
                   pname
             row = row[:72]
 
             glist = zip(pstats.guesses.db.values(), pstats.guesses.db.keys())
             glist.sort()
             glist.reverse()
-            #srow = "       fo"
-            #c = ":"
-            #for (amount, guess) in glist[:3]:
-            #    srow += c + " %d %s" % (amount, guess)
-            #    if c == ":":
-            #        c = ","
-            message += row + "\n" # + srow + "\n"
-
-        #if self.total != 1:
-        #    message += "\nAlla gissningar:\n"
-        #    message += "----------------------------\n"
-        #    message += self.guesses.create_string(MAX_ENTRIES_GUESS_LIST, "Totalt")
+            message += row + "\n"
 
         g.send_letter(subject, message, GAZONK_CONF, 1, 1)
 
@@ -727,34 +770,51 @@ class PersonStats:
         self.win_count = 0
         self.m_coc = AverageCoC()
         self.m_coc_mg = AverageCoC()
+        self.gpk_coc = AverageCoC()
+        self.gpk_coc_mg = AverageCoC()
 
     def merge_into(self, other):
         self.win_count += other.win_count
         self.guesses.merge_into(other.guesses)
         self.m_coc.merge_into(other.m_coc)
         self.m_coc_mg.merge_into(other.m_coc_mg)
+        self.gpk_coc.merge_into(other.gpk_coc)
+        self.gpk_coc_mg.merge_into(other.gpk_coc_mg)
 
     def add_guess(self, guess, person, win = 0, cluenr = 0):
         self.guesses.add(guess)
         if win == 1:
             self.win_count += 1
             self.m_coc.add(cluenr)
+            self.gpk_coc.add(self.guesses.count)
 
     def send_person_stats(self, person_no, about_person = None):
         message = ""
-        sdina = "dina"
         if about_person != None:
             message = "Statistik om <Person %d: %s>.\n\n" % about_person
-            sdina = "hans"
-        message += "Gissningar:                        %d\n" % self.guesses.count
-        message += "Korrekta gissningar:               %d\n" % self.win_count
+
+        message += "Gissningar:  %d\n" % self.guesses.count
+        message += "Korrekta:    %d\n" % self.win_count
         if self.guesses.count > 0:
-            message += "Andel korrekta gissningar:         %3.2f%%\n" % \
+            message += "k/g:         %3.2f%%\n" % \
                        (float(self.win_count)/float(self.guesses.count)*100.0)
-        if self.m_coc.get() != None:
-            message += "Snitt för att klara lösenord:      %2.1f\n" % self.m_coc.get()
-        if self.m_coc_mg.get() != None:
-            message += "Snitt personer klarat %s lösenord: %2.1f\n" % (sdina, self.m_coc_mg.get())
+        mc = self.m_coc.get()
+        mcmg = self.m_coc_mg.get()
+        gpk = self.gpk_coc.get()
+        gpkmg = self.gpk_coc_mg.get()
+        if mc != None:
+            message += "Led:         %2.1f\n" % mc
+        if mcmg != None:
+            message += "GLed:        %2.1f\n" % (mcmg)
+        if gpk != None:
+            message += "g/k:         %3.1f\n" % gpk
+            if mc != None:
+                message += "Gg/k:        %3.1f\n" % (gpk/mc)
+        if gpkmg != None:
+            message += "g/l:         %3.1f\n" % (gpkmg)
+            if mcmg != None:
+                message += "Gg/l:        %3.1f\n" % (gpkmg/mcmg)
+
         message += "\nTop 50 gissningar:\n"
         message += "------------------\n"
         message += self.guesses.create_string(50)
@@ -837,6 +897,15 @@ def log(txt):
 def get_date_and_time():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
 
+# Get current time-number, i.e. hour/day/week/month/year depending on disp_stat
+def get_now_num(disp_stat):
+    if disp_stat == 0:
+        return -1
+    tmptime = time.localtime(time.time())
+    tmpconv = {0: -1, 1: 3, 2: 2, 3: 6, 4: 1, 5: 0}
+    return tmptime[tmpconv[disp_stat]]
+
+
 # Dela upp en sträng på många rader.
 def break_up_row(rstr, row_length = 68):
     nstr = ""
@@ -886,6 +955,13 @@ def find_person(person_str):
     else:
         return matches[0]
 
+# Divide
+def divide_with_zero(a,b):
+    if b > 0:
+        return float(a)/float(b)
+    else:
+        return None
+
 # Förkorta, dvs ta bort pareneteser ur namn
 def shorten_name(orig_name):
     #TODO: actually do something
@@ -919,7 +995,9 @@ log("Gazonk!")
 if gaz.current_time >= 0.0:
     gaz.time_last_action += time.time() - gaz.current_time
 
-gaz.tstats.reset_now()
+if GAZ_DISPLAY_STATISTICS != gaz.tstats.disp_stat or \
+   GAZ_DISPLAY_STATISTICS < 1:
+    gaz.tstats.reset_now()
 
 # Hantera meddelanden
 

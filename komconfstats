@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.9 2001/03/03 14:08:13 kent Exp $
+# $Id: komconfstats,v 1.10 2001/03/03 14:41:23 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -24,6 +24,7 @@
 
 import kom
 import komparam
+import komconfwalker
 import sys
 import getopt
 import string
@@ -35,7 +36,7 @@ import whrandom
 import jddate # From the lyspython collection
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.9 $"
+vc_revision = "$Revision: 1.10 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -86,79 +87,6 @@ def is_palindrome(str):
     l2.reverse()
     return l1 == l2
 
-#
-# DATE PERIOD CLASS 
-#
-# This class is used to keep track of an open, closed or half-open
-# date interval, and to figure out where a date is in relation to
-# the interval.
-#
-
-class Period:
-    def __init__(self):
-        # Unlimited to start with
-        self.begin = None
-        self.end = None
-
-    def __repr__(self):
-        return "<Period %s ... %s>" % (self.begin, self.end)
-    
-    def set_today(self):
-        self.begin = self.end = jddate.FromToday()
-
-    def set_yesterday(self):
-        self.begin = self.end = jddate.FromToday() -1
-
-    def set_this_week(self):
-        today = jddate.FromToday()
-        self.begin = today.GetWeekStart()
-        self.end = today.GetWeekEnd()
-
-    def set_last_week(self):
-        today = jddate.FromToday()
-        self.begin = today.GetWeekStart() - 7
-        self.end = today.GetWeekEnd() - 7 
-
-    def set_this_month(self):
-        today = jddate.FromToday()
-        self.begin = today.GetMonthStart()
-        self.end = today.GetMonthEnd()
-
-    def set_last_month(self):
-        today = jddate.FromToday()
-        self.begin = (today.GetMonthStart()-1).GetMonthStart()
-        self.end = self.begin.GetMonthEnd()
-
-    def set_begin(self, str):
-        self.begin = jddate.FromString(str)
-
-    def set_end(self, str):
-        self.end = jddate.FromString(str)
-
-    def ymd_compare(self, y, m, d):
-        # Return -1 if the date is before our beginning,
-        #         0 if the date is within our limits (inclusively), or
-        #        +1 if the date is after our end.
-        date = jddate.FromYMD(y, m, d)
-        if self.begin is not None and date < self.begin: return -1
-        if self.end is not None and date > self.end: return +1
-        return 0
-    
-    def ymd_is_inside(self, y, m, d):
-        # Return true iff the date is within our boundaries (inclusively)
-        return self.ymd_compare(y, m, d) == 0
-
-    def format(self):
-        if self.begin is None and self.end is None:
-            return "obegränsad"
-        elif self.begin is None:
-            return "till och med " + self.end.GetString_YYYY_MM_DD()
-        elif self.end is None:
-            return "från och med " + self.begin.GetString_YYYY_MM_DD()
-        else:
-            return self.begin.GetString_YYYY_MM_DD() + " ... " +\
-                   self.end.GetString_YYYY_MM_DD()
-            
 #
 # Main classes for recording information, and their specializations.
 #
@@ -574,22 +502,23 @@ class Report:
 # using all the nice little Tabulators and then produce all
 # the reports (as text on stdout or as articles in a conference).
 #
+# Newsflash: The walking logic has been isolated to a separate
+# class, from which this one inherits.
 
-class ConfStats:
-    def __init__(self, person, conference, period,
+class ConfStats(komconfwalker.ConfTemporalWalker):
+    def __init__(self, conn, person, conference, period,
                  mark_earlier = 0, mark_processed = 0,
                  full_text = 0, post_to_conference = 0,
                  exclude_self = 0,
                  debug = 0):
-        self.person = person
-        self.conference = conference
-        self.period = period
-        self.mark_earlier = mark_earlier
-        self.mark_processed = mark_processed
+        komconfwalker.ConfTemporalWalker.__init__(self, conn,
+                                                  person, conference, period,
+                                                  mark_earlier, mark_processed,
+                                                  debug)
+        
         self.full_text = full_text
         self.post_to_conference = post_to_conference
         self.exclude_self = exclude_self
-        self.debug = debug
 
         self.reports = [] # The reports to produce, in order
         
@@ -904,211 +833,177 @@ class ConfStats:
             
         # Learn the members of the conference
         # FIXME: What maximum number should be used?
-        members = map(lambda x: x.member,
-                      kom.ReqGetMembers(conn,
-                                        self.conference,
-                                        0, 16384).response())
+        self.members = map(lambda x: x.member,
+                           kom.ReqGetMembers(self.conn,
+                                             self.conference,
+                                             0, 16384).response())
         
         # Traverse the texts.
-        unread_texts = conn.get_unread_texts(self.person, conference)
-        if self.debug:
-            sys.stderr.write("Number of unread texts: %d\n" %len(unread_texts))
-        for (loc_no, global_no) in unread_texts:
+        self.walk()
 
-            # Skip erased texts.
-            # FIXME: Some day, somebody should figure out if entries
-            # with global_no == 0 should really be present in the
-            # list given to us by kom.py.
-            if global_no == 0:
-                continue
-            ts = conn.textstats[global_no]
+        # That's it. The reporting is done in a separate method.
 
-            # Check creation time of article
-            created = ts.creation_time.to_python_time()
-            cmp = period.ymd_compare(ts.creation_time.year + 1900,
-                                     ts.creation_time.month + 1,
-                                     ts.creation_time.day)
-            if cmp < 0:
-                # Earlier than the requested period
-                if self.debug:
-                    sys.stderr.write("- %d %s\n" %( global_no, time.ctime(created)))
-                if self.mark_earlier:
-                    kom.ReqMarkAsRead(conn,
-                                      self.conference,
-                                          [loc_no]).response()
-                    
-                continue
-            elif cmp > 0:
-                # Later then the requested period
-                if self.debug:
-                    sys.stderr.write("+ %d %s\n" %( global_no, time.ctime(created)))
-                continue
-            else:
-                # Inside the requested period, fall through to do the work
-                if self.debug:
-                    sys.stderr.write("* %d %s\n" %( global_no, time.ctime(created)))
-                pass
 
-            # Skip texts by myself
-            if exclude_self and ts.author == self.person:
-                # FIXME: Figure out when to mark as read
-                continue
+    def process(self, loc_no, global_no, ts):
+        # Overrides the dummy method in ConfTemporalWalker
 
-            # Tabulate simple things that only depend on this text
-            subject = conn.subjects[global_no]
-            self.at.tabulate([ts.author, subject])
-            self.st.tabulate([subject, ts.author])
-            if ts.author not in members:
-                self.gat.tabulate([ts.author, subject])
-            self.hh.tabulate([ts.creation_time.hours, ts.author])
-            self.wh.tabulate([(ts.creation_time.day_of_week-1)%7, ts.author])
-            self.dh.tabulate([jddate.FromUnixTime(ts.creation_time.to_python_time()), ts.author])
-            self.dst.tabulate([subject, jddate.FromUnixTime(ts.creation_time.to_python_time())])
-            self.csh.tabulate([ts.no_of_chars])
-            self.lsh.tabulate([ts.no_of_lines, ts.author])
 
-            # Even numbers ("jubel")
-            # FIXME: This is base 10. Should we do base-2 also?
+        # Skip texts by myself
+        if self.exclude_self and ts.author == self.person:
+            return
+
+        # Tabulate simple things that only depend on this text
+        subject = self.conn.subjects[global_no]
+        self.at.tabulate([ts.author, subject])
+        self.st.tabulate([subject, ts.author])
+        if ts.author not in self.members:
+            self.gat.tabulate([ts.author, subject])
+        self.hh.tabulate([ts.creation_time.hours, ts.author])
+        self.wh.tabulate([(ts.creation_time.day_of_week-1)%7, ts.author])
+        self.dh.tabulate([jddate.FromUnixTime(ts.creation_time.to_python_time()), ts.author])
+        self.dst.tabulate([subject, jddate.FromUnixTime(ts.creation_time.to_python_time())])
+        self.csh.tabulate([ts.no_of_chars])
+        self.lsh.tabulate([ts.no_of_lines, ts.author])
+
+        # Even numbers ("jubel")
+        # FIXME: This is base 10. Should we do base-2 also?
+        
+        numstr = str(global_no)
+        if numstr[-3:] == "000":
+            self.ent.tabulate([numstr, ts.author, numstr])
+
+        # Palindromes
+        if is_palindrome(numstr):
+            self.pal.tabulate([ts.author, numstr])
+
+        # Tabulate things that depend on the recipient list
+        for mir in ts.misc_info.recipient_list:
+            if mir.recpt <> self.conference:
+                if self.conn.uconferences[mir.recpt].type.letterbox:
+                    self.prt.tabulate([mir.recpt, subject, ts.author])
+                    self.rprt.tabulate([subject, mir.recpt, ts.author])
+
+                else:
+                    self.crt.tabulate([mir.recpt, subject, ts.author])
+                    self.rcrt.tabulate([subject, mir.recpt, ts.author])
+
+        # Tabulate things that depend on the aux-items
+        # CREATING SOFTWARE
+        ai_c_s = kom.first_aux_items_with_tag(ts.aux_items,
+                                              kom.AI_CREATING_SOFTWARE)
+        if ai_c_s is not None:
+            (c_s,c_s_version) = (string.split(ai_c_s.data)+[""])[:2]
+            self.vt.tabulate([c_s, c_s_version])
+        else:
+            self.vt.tabulate(["Ej specificerad", "Ingen version"])
+
+        # CONTENT_TYPE
+        ai_c_t = kom.first_aux_items_with_tag(ts.aux_items,
+                                              kom.AI_CONTENT_TYPE)
+        if ai_c_t is not None:
+            (c_t,c_t_options) = (string.split(ai_c_t.data,";")+[""])[:2]
+            self.ctt.tabulate([c_t, c_t_options])
+        else:
+            self.ctt.tabulate(["Ej specificerad","Inga optioner"])
             
-            numstr = str(global_no)
-            if numstr[-3:] == "000":
-                self.ent.tabulate([numstr, ts.author, numstr])
+        # Tabulate things that depend on the commented text(s)
 
-            # Palindromes
-            if is_palindrome(numstr):
-                self.pal.tabulate([ts.author, numstr])
-
-            # Tabulate things that depend on the recipient list
-            for mir in ts.misc_info.recipient_list:
-                if mir.recpt <> self.conference:
-                    if conn.uconferences[mir.recpt].type.letterbox:
-                        self.prt.tabulate([mir.recpt, subject, ts.author])
-                        self.rprt.tabulate([subject, mir.recpt, ts.author])
-
-                    else:
-                        self.crt.tabulate([mir.recpt, subject, ts.author])
-                        self.rcrt.tabulate([subject, mir.recpt, ts.author])
-
-            # Tabulate things that depend on the aux-items
-            # CREATING SOFTWARE
-            ai_c_s = kom.first_aux_items_with_tag(ts.aux_items,
-                                                  kom.AI_CREATING_SOFTWARE)
-            if ai_c_s is not None:
-                (c_s,c_s_version) = (string.split(ai_c_s.data)+[""])[:2]
-                self.vt.tabulate([c_s, c_s_version])
-            else:
-                self.vt.tabulate(["Ej specificerad", "Ingen version"])
-
-            # CONTENT_TYPE
-            ai_c_t = kom.first_aux_items_with_tag(ts.aux_items,
-                                                  kom.AI_CONTENT_TYPE)
-            if ai_c_t is not None:
-                (c_t,c_t_options) = (string.split(ai_c_t.data,";")+[""])[:2]
-                self.ctt.tabulate([c_t, c_t_options])
-            else:
-                self.ctt.tabulate(["Ej specificerad","Inga optioner"])
+        # NOTICE: Things tallied inside the for loop could get
+        # rather confused (e.g. an article counted multiple times)
+        # when an article is a comment to more than one other article.
+        # However, this may be a small price to pay to get some more
+        # interesting information for all "normal" chains.
+        
+        if len(ts.misc_info.comment_to_list) == 0:
+            self.oat.tabulate([ts.author, subject, str(global_no)])
+        else:
+            recipients_of_commented_includes_this_conference = 0
+            this_is_a_footnote = 0
+            this_is_a_self_comment= 0
+            for entry in ts.misc_info.comment_to_list:
+                try:
+                    ts_commented = self.conn.textstats[entry.text_no]
+                except kom.NoSuchText:
+                    continue
                 
-            # Tabulate things that depend on the commented text(s)
+                # Subject change?
+                old_subject = self.conn.subjects[entry.text_no]
+                if old_subject <> subject:
+                    self.sat.tabulate([ts.author, old_subject, subject])
 
-            # NOTICE: Things tallied inside the for loop could get
-            # rather confused (e.g. an article counted multiple times)
-            # when an article is a comment to more than one other article.
-            # However, this may be a small price to pay to get some more
-            # interesting information for all "normal" chains.
-            
-            if len(ts.misc_info.comment_to_list) == 0:
-                self.oat.tabulate([ts.author, subject, str(global_no)])
-            else:
-                recipients_of_commented_includes_this_conference = 0
-                this_is_a_footnote = 0
-                this_is_a_self_comment= 0
-                for entry in ts.misc_info.comment_to_list:
-                    try:
-                        ts_commented = conn.textstats[entry.text_no]
-                    except kom.NoSuchText:
-                        continue
-                    
-                    # Subject change?
-                    old_subject = conn.subjects[entry.text_no]
-                    if old_subject <> subject:
-                        self.sat.tabulate([ts.author, old_subject, subject])
+                # Who comments whom? First both directions separately...
+                a1 = ts.author
+                a2 = ts_commented.author
+                self.ct.tabulate([a1,a2])
+                self.rct.tabulate([a2,a1])
+                self.dct.tabulate([(a1,a2)])
+                # ... then mixed together
+                if a1 > a2:
+                    (a1, a2) = (a2, a1)
+                self.nct.tabulate([(a1,a2)])
 
-                    # Who comments whom? First both directions separately...
-                    a1 = ts.author
-                    a2 = ts_commented.author
-                    self.ct.tabulate([a1,a2])
-                    self.rct.tabulate([a2,a1])
-                    self.dct.tabulate([(a1,a2)])
-                    # ... then mixed together
-                    if a1 > a2:
-                        (a1, a2) = (a2, a1)
-                    self.nct.tabulate([(a1,a2)])
+                # Find out if the commented text is also in
+                # our conference
+                recpts_of_commented = map(lambda x: x.recpt,
+                                          ts_commented.misc_info.recipient_list)
+                if not self.conference in recpts_of_commented:
+                    # FIXME: Here, we will count each article once
+                    # for every conference the parent was in...
+                    for c in recpts_of_commented:
+                        self.mat.tabulate([ts.author, c, subject])
+                        self.rmat.tabulate([c, ts.author, subject])
 
-                    # Find out if the commented text is also in
-                    # our conference
-                    recpts_of_commented = map(lambda x: x.recpt,
-                                              ts_commented.misc_info.recipient_list)
-                    if not self.conference in recpts_of_commented:
-                        # FIXME: Here, we will count each article once
-                        # for every conference the parent was in...
-                        for c in recpts_of_commented:
-                            self.mat.tabulate([ts.author, c, subject])
-                            self.rmat.tabulate([c, ts.author, subject])
+                # Footnote?
+                if entry.type == kom.MIC_FOOTNOTE:
+                    this_is_a_footnote = 1
 
-                    # Footnote?
-                    if entry.type == kom.MIC_FOOTNOTE:
-                        this_is_a_footnote = 1
+                # Self-comment?
+                if entry.type == kom.MIC_COMMENT and \
+                   ts_commented.author == ts.author:
+                    this_is_a_self_comment = 1
 
-                    # Self-comment?
-                    if entry.type == kom.MIC_COMMENT and \
-                       ts_commented.author == ts.author:
-                        this_is_a_self_comment = 1
+                # Time between parent and comment
+                created = ts.creation_time.to_python_time()
+                created_commented = ts_commented.creation_time.to_python_time()
+                age = int(created - created_commented)
+                if age >= 0:
+                    self.ah.tabulate([age, ts.author])
 
-                    # Time between parent and comment
-                    created_commented = ts_commented.creation_time.to_python_time()
-                    age = int(created - created_commented)
-                    if age >= 0:
-                        self.ah.tabulate([age, ts.author])
+            # Now, tally the things we do not want/need to
+            # tally inside the loop
+            if this_is_a_footnote:
+                self.fnat.tabulate([ts.author])
 
-                # Now, tally the things we do not want/need to
-                # tally inside the loop
-                if this_is_a_footnote:
-                    self.fnat.tabulate([ts.author])
+            if this_is_a_self_comment:
+                self.scat.tabulate([ts.author])
+                
+        # Tabulate things that depend on the comment(s)
+        no_c = len(ts.misc_info.comment_in_list)
+        self.kh.tabulate([no_c])
+        if no_c == 0:
+            self.cat0.tabulate([ts.author])
+        else:
+            if no_c >= 1:
+                self.cat1.tabulate([ts.author])
+                if no_c >= 2:
+                    self.cat2.tabulate([ts.author])
+                    if no_c >= 3:
+                        self.cat3.tabulate([ts.author])
+                        if no_c >= 4:
+                            self.cat4.tabulate([ts.author])
+                            if no_c >= 5:
+                                self.cat5.tabulate([ts.author])
+                                if no_c >= 10:
+                                    self.cat10.tabulate([ts.author])
 
-                if this_is_a_self_comment:
-                    self.scat.tabulate([ts.author])
-                    
-            # Tabulate things that depend on the comment(s)
-            no_c = len(ts.misc_info.comment_in_list)
-            self.kh.tabulate([no_c])
-            if no_c == 0:
-                self.cat0.tabulate([ts.author])
-            else:
-                if no_c >= 1:
-                    self.cat1.tabulate([ts.author])
-                    if no_c >= 2:
-                        self.cat2.tabulate([ts.author])
-                        if no_c >= 3:
-                            self.cat3.tabulate([ts.author])
-                            if no_c >= 4:
-                                self.cat4.tabulate([ts.author])
-                                if no_c >= 5:
-                                    self.cat5.tabulate([ts.author])
-                                    if no_c >= 10:
-                                        self.cat10.tabulate([ts.author])
+        # Get the text and tabulate the words (max size=1024*1024)
 
-            # Get the text and tabulate the words (max size=1024*1024)
+        if self.full_text:
+            text = kom.ReqGetText(self.conn, global_no, 0, 1024*1024).response()
+            for word in split_text_into_words(text):
+                self.wt.tabulate([word])
+      
 
-            if self.full_text:
-                text = kom.ReqGetText(conn, global_no, 0, 1024*1024).response()
-                for word in split_text_into_words(text):
-                    self.wt.tabulate([word])
-          
-
-            # Mark the text as read if requested
-            if self.mark_processed:
-                kom.ReqMarkAsRead(conn, self.conference, [loc_no]).response()
-            
     def report(self):
         title = "Statistik för " + conn.conf_name(self.conference)
 
@@ -1192,7 +1087,7 @@ conn.enable_req_histo()
 #
 
 conference = None
-period = Period()
+period = komconfwalker.Period()
 mark_earlier = 0
 mark_processed = 0
 full_text = 0
@@ -1263,7 +1158,8 @@ for (opt, optarg) in options:
 if conference is None:
     error("No conference given!", exit_now = 1)
     
-cstats = ConfStats(param.get_person_no(), conference, period,
+cstats = ConfStats(conn,
+                   param.get_person_no(), conference, period,
                    mark_earlier = mark_earlier,
                    mark_processed = mark_processed,
                    full_text = full_text,

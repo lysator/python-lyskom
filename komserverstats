@@ -1,0 +1,97 @@
+#!/usr/bin/env python
+# -*- coding: iso-8859-1 -*-
+# Get server statistics using get-stats (protocol version 11 and up)
+# $Id: komserverstats,v 1.1 2003/09/02 18:20:13 kent Exp $
+# (C) 2003 Kent Engström. Released under GPL.
+
+import sys
+import optparse   # Python 2.3 needed
+
+import kom
+import komconnect # Python 2.3 needed
+
+errwrite = sys.stderr.write
+
+# Option handling
+
+optp = optparse.OptionParser()
+komconnect.add_server_name_password(optp) # Standard options for login
+
+ogrp = optparse.OptionGroup(optp, "Statistics Gathering")
+ogrp.add_option("--property",
+                help = "get the value of PROP", metavar="PROP")
+ogrp.add_option("--period", type="int", default=0,
+                help = "get the value for SECS seconds", metavar="SECS")
+ogrp.add_option("--rates", action="store_true",
+                help = "include +/- rates")
+ogrp.add_option("--describe", action="store_true",
+                help = "show properties and periods")
+optp.add_option_group(ogrp)
+
+ogrp = optparse.OptionGroup(optp, "Highest Text Numbers")
+ogrp.add_option("--highest-global", action="store_true",
+                help = "get the highest global text number")
+ogrp.add_option("--highest-local",
+                help = "get the highest local text number in CONF",
+                metavar="CONF")
+optp.add_option_group(ogrp)
+
+(options, args) = optp.parse_args()
+
+# Connect and log in
+
+try:
+    conn = komconnect.connect_and_login(options, kom.CachedConnection)
+except komconnect.Error, error:
+    errwrite("%s: %s\n" % (sys.argv[0], error))
+    sys.exit(1)
+
+# Do the work
+
+if options.describe:
+    sd =  kom.ReqGetStatsDescription(conn).response()
+    print "Periods:"
+    for per in sd.when: print "  " + str(per)    
+    print
+    print "Properties:"
+    for prop in sd.what: print "  " + prop
+
+    
+elif options.property is not None and options.period is not None:
+    sd =  kom.ReqGetStatsDescription(conn).response()
+    if options.property not in sd.what:
+        errwrite("unknown property %s\n" % options.property)
+        sys.exit(1)
+    try:
+        ix = sd.when.index(options.period)
+    except ValueError:
+        errwrite("unknown period %d\n" % options.period)
+        sys.exit(1)
+
+    stats =  kom.ReqGetStats(conn, options.property).response()
+    if options.rates:
+        print "%f %f %f" % (stats[ix].average,
+                            stats[ix].ascent_rate,
+                            stats[ix].descent_rate)
+    else:
+        print "%f" % stats[ix].average
+
+elif options.highest_global:
+    print kom.ReqFindPreviousTextNo(conn, sys.maxint).response()
+
+elif options.highest_local:
+    confs = conn.lookup_name(options.highest_local,
+                             want_pers = 1, want_confs = 1)
+    if len(confs) == 1:
+        conference = confs[0][0]
+    elif len(confs) > 1:
+        errwrite("%s is not a unique name\n"% options.highest_local)
+        sys.exit(1)
+    else:
+        errwrite("%s not found\n" % options.highest_local)
+        sys.exit(1)
+    print conn.uconferences[conference].highest_local_no
+
+else:
+    optp.print_help()
+    sys.exit(1)

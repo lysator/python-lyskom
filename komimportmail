@@ -1,6 +1,6 @@
 #!/usr/bin/python-1.5.2
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.5 1999/07/23 13:02:31 kent Exp $
+# $Id: komimportmail,v 1.6 1999/07/23 13:17:58 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -27,7 +27,7 @@ APPENDIX_TEXT_NONAME = "Bilaga till: "
 APPENDIX_TEXT = "Bilaga (%s) till: "
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.5 $"
+vc_revision = "$Revision: 1.6 $"
 revision = vc_revision[11:-2]
 
 # Error reporting
@@ -166,20 +166,25 @@ def create_article(envelope_sender,
                 aux_items.append(kom.AuxItem(aux_item_type,
                                              rfc1522.decode(mail_headers[header_name])))
     
-        # Adress header fields (single or not)
-        for (header_name, aux_item_email, aux_item_fullname) in [
-            ("From", kom.AI_MX_FROM, kom.AI_MX_AUTHOR),
-            ("To", kom.AI_MX_TO, None),
-            ("Cc", kom.AI_MX_CC, None),
-            ("Reply-To", kom.AI_MX_REPLY_TO, None),
+        # Adress header fields. The format is one of:
+        # - email address (e.g. "kent@lysator.liu.se")
+        # - fullname <email> (e.g. "Kent Engström <kent@lysator.liu.se>")
+        # N.B.: we do not fill in the mx-author aux-item.
+        for (header_name, aux_item_type) in [
+            ("From", kom.AI_MX_FROM),
+            ("To", kom.AI_MX_TO),
+            ("Cc", kom.AI_MX_CC),
+            ("Reply-To", kom.AI_MX_REPLY_TO),
             ]:
     
-            for (full_name, email) in mail_headers.getaddrlist(header_name):
-                if aux_item_email:
-                    aux_items.append(kom.AuxItem(aux_item_email, email))
-                if aux_item_fullname:
-                    aux_items.append(kom.AuxItem(aux_item_fullname,
-                                                 rfc1522.decode(full_name)))
+            for (name_part, email_part) in mail_headers.getaddrlist(header_name):
+                name_part = rfc1522.decode(name_part)
+                if name_part:
+                    email = "%s <%s>" % (name_part, email_part)
+                else:
+                    email = email_part
+                aux_items.append(kom.AuxItem(aux_item_type, email))
+                                             
     
         # Date
         if mail_headers.has_key("Date"):

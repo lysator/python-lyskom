@@ -707,7 +707,7 @@ class Gazonk:
                                               GAZ_AMOUNT_CLUE_TIMES)
 
                 current_time = time.time()
-                if nc_times[0] < (current_time + 0.1:
+                if nc_times[0] < (current_time + 0.1):
                     if len(self.clues) > self.current_clue + 1:
                         send_message("Oj, är klockan så mycket! " + \
                                      "Bäst jag skickar ut en ny ledtråd.", msg.sender)

@@ -24,6 +24,9 @@ HACKER SUMMARY
 
 - The thkom.py module offers the ThreadedConnection class,
   which is kom.Connection with support for Python threads.
+  Read more about it in the comment at the top of the file.
+  There are two small demonstration programs thkomdemo[12].py to
+  show the main new feature.
 
   Importing mail
   --------------
@@ -74,7 +77,7 @@ HACKER SUMMARY
 
 COPYRIGHT
 
-  (C) Copyright 1999 Kent Engström, Peter Liljenberg.
+  (C) Copyright 1999, 2000 Kent Engström, Peter Liljenberg.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by

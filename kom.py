@@ -1,5 +1,5 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: kom.py,v 1.4 1999/07/14 14:14:40 kent Exp $
+# $Id: kom.py,v 1.5 1999/07/14 14:44:18 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import socket
@@ -872,49 +872,111 @@ class ReqSetPersFlags(Request):
 class AsyncMessage:
     pass
 
-# async-new-text-old [0] (1) Obsolete (10)
+# async-new-text-old [0] (1) Obsolete (10) <DEFAULT>
 
 class AsyncNewTextOld(AsyncMessage):
     def parse(self, c):
         self.text_no = c.parse_int()
         self.text_stat = c.parse_old_object(TextStat)
 
-# async-sync-db [7] (1) Recommended
+# async-i-am-off [1] (1) Obsolete
+# async-i-am-on-onsolete [2] (1) Obsolete
+
+# async-new-name [5] (1) Recommended <DEFAULT>
+class AsyncNewName(AsyncMessage):
+    def parse(self, c):
+        self.conf_no = c.parse_int()
+        self.old_name = c.parse_string()
+        self.new_name = c.parse_string()
+
+# async-i-am-on [6] Recommended
+class AsyncIAmOn(AsyncMessage):
+    def parse(self, c):
+        self.info = c.parse_object(WhoInfo)
+
+# async-sync-db [7] (1) Recommended <DEFAULT>
 class AsyncSyncDB(AsyncMessage):
     def parse(self, c):
         pass
 
-# async-leave-conf [8] (1) Recommended
+# async-leave-conf [8] (1) Recommended <DEFAULT>
 class AsyncLeaveConf(AsyncMessage):
     def parse(self, c):
         self.conf_no = c.parse_int()
 
-# async-login [9] (1) Recommended
+# async-login [9] (1) Recommended <DEFAULT>
 class AsyncLogin(AsyncMessage):
     def parse(self, c):
         self.person_no = c.parse_int()
         self.session_no = c.parse_int()
 
-# async-send-message [12] (1) Recommended
+# async-broadcast [10] Obsolete
+
+# async-rejected-connection [11] (1) Recommended <DEFAULT>
+class AsyncRejectedConnection(AsyncMessage):
+    def parse(self, c):
+        pass
+
+# async-send-message [12] (1) Recommended <DEFAULT>
 class AsyncSendMessage(AsyncMessage):
     def parse(self, c):
         self.recipient = c.parse_int()
         self.sender = c.parse_int()
         self.message = c.parse_string()
 
-# async-logout (1) Recommended
+# async-logout [13] (1) Recommended <DEFAULT>
 class AsyncLogout(AsyncMessage):
     def parse(self, c):
         self.person_no = c.parse_int()
         self.session_no = c.parse_int()
 
+# async-deleted-text [14] (10) Recommended
+class AsyncDeletedText(AsyncMessage):
+    def parse(self, c):
+        self.text_no = c.parse_int()
+        self.text_stat = c.parse_object(TextStat)
+
+# async-new-text [15] (10) Recommended
+class AsyncNewText(AsyncMessage):
+    def parse(self, c):
+        self.text_no = c.parse_int()
+        self.text_stat = c.parse_object(TextStat)
+
+# async-new-recipient [16] (10) Recommended
+class AsyncNewRecipient(AsyncMessage):
+    def parse(self, c):
+        self.text_no = c.parse_int()
+        self.conf_no = c.parse_int()
+        self.type = c.parse_int()
+
+# async-sub-recipient [17] (10) Recommended
+class AsyncSubRecipient(AsyncMessage):
+    def parse(self, c):
+        self.text_no = c.parse_int()
+        self.conf_no = c.parse_int()
+        self.type = c.parse_int()
+
+# async-new-membership [18] (10) Recommended
+class AsyncNewMembership(AsyncMessage):
+    def parse(self, c):
+        self.person_no = c.parse_int()
+        self.conf_no = c.parse_int()
+
 async_dict = {
     0: AsyncNewTextOld,
+    5: AsyncNewName,
+    6: AsyncIAmOn,
     7: AsyncSyncDB,
     8: AsyncLeaveConf,
     9: AsyncLogin,
+   11: AsyncRejectedConnection,
    12: AsyncSendMessage,
    13: AsyncLogout,
+   14: AsyncDeletedText,
+   15: AsyncNewText,
+   16: AsyncNewRecipient,
+   17: AsyncSubRecipient,
+   18: AsyncNewMembership
     }
 
 #
@@ -1483,6 +1545,14 @@ class StaticSessionInfo:
         self.ident_user = c.parse_string()
         self.connection_time = c.parse_object(Time)
      
+class WhoInfo:
+    def parse(self, c):
+        self.person = c.parse_int()
+        self.working_conference = c.parse_int()
+        self.session = c.parse_int()
+        self.what_am_i_doing  = c.parse_string()
+        self.username = c.parse_string()
+     
 #
 # CLASS for a connection
 #
@@ -1507,7 +1577,7 @@ class Connection:
         self.rb_pos = 0 # Position of first unread byte in buffer
 
         # Asynchronous message handlers
-        self.am_handlers = {}
+        self.async_handlers = {}
         
         # Send initial string 
         self.send_string("A%dH%s\n" % (len(user), user))
@@ -1517,8 +1587,15 @@ class Connection:
         if resp <> "LysKOM\n":
             raise BadInitialResponse
 
-    def register_am_handler(self, msg_no, handler):
-        self.am_handlers[msg_no] = handler
+    # ASYNCHRONOUS MESSAGES HANDLERS
+    
+    def add_async_handler(self, msg_no, handler):
+        if not async_dict.has_key(msg_no):
+            raise UnimplementedAsync
+        if self.async_handlers.has_key(msg_no):
+            self.async_handlers[msg_no].append(handler)
+        else:
+            self.async_handlers[msg_no] = [handler]
 
     # REQUEST QUEUE
     
@@ -1597,8 +1674,9 @@ class Connection:
         if async_dict.has_key(msg_no):
             msg = async_dict[msg_no]()
             msg.parse(self)
-            if self.am_handlers.has_key(msg_no):
-                self.am_handlers[msg_no](msg,self)
+            if self.async_handlers.has_key(msg_no):
+                for handler in self.async_handlers[msg_no]:
+                    handler(msg,self)
             else:
                 print "*** ASYNC %d UNHANDLED ***" % msg_no
         else:

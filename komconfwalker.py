@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Virtual classes to walk a conference, e.g. for statistics gathering
-# $Id: komconfwalker.py,v 1.1 2001/03/03 14:41:23 kent Exp $
+# $Id: komconfwalker.py,v 1.2 2001/03/03 17:39:48 kent Exp $
 # (C) 2000, 2001 Kent Engström. Released under GPL.
 
 import sys
@@ -103,6 +103,10 @@ class ConfTemporalWalker:
         self.mark_processed = mark_processed
         self.debug = debug
 
+        self.no_of_articles = 0
+        self.first_created = None
+        self.last_created = None
+
     def walk(self):
         # Traverse the texts.
         unread_texts = self.conn.get_unread_texts(self.person, self.conference)
@@ -140,11 +144,18 @@ class ConfTemporalWalker:
                 # Inside the requested period
                 if self.debug:
                     sys.stderr.write("* %d %s\n" %( global_no, time.ctime(created)))
-                self.process(loc_no, global_no, ts)
+                self.internal_process(loc_no, global_no, ts, created)
 
                 if self.mark_processed:
                     kom.ReqMarkAsRead(self.conn, self.conference, [loc_no]).response()
             
+
+    def internal_process(self, loc_no, global_no, ts, created):
+        self.no_of_articles = self.no_of_articles + 1
+        if self.first_created is None:
+            self.first_created = created
+        self.last_created = created
+        self.process(loc_no, global_no, ts)
 
     def process(self, loc_no, global_no, ts):
         # Override this method to define how articles are to be processed

@@ -98,6 +98,7 @@ Förklaringar till den statistik som ges periodvis:
 Gissn  = antal gissningar
 Korr   = antal korrekta gissningar
 k/g    = andel korrekta gissningar (procent)
+k^3/g  = mått för hur bra man är (= Korr^3/Gissn)
 Led    = antal ledtrådar som behövts i snitt för att klara lösenordet
 GLed   = antal ledtrådar motståndarna behövt i snitt för att klara
          lösenordet när personen är gazonk

@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.6"
+VERSION="0.3.7"
 
 INVISIBLE = 1
 
@@ -114,6 +114,7 @@ help_strings = {"": """Grundläggande kommandon:
 Gissn  = antal gissningar
 Korr   = antal korrekta gissningar
 k/g    = andel korrekta gissningar (procent)
+k^3/g  = mått för hur bra man är (= Korr^3/Gissn)
 Led    = antal ledtrådar som behövts i snitt för att klara lösenordet
 GLed   = antal ledtrådar motståndarna behövt i snitt för att klara
          lösenordet när personen är gazonk
@@ -207,11 +208,16 @@ class Gazonk:
             message += indent(gdb.create_string(MAX_ENTRIES_GUESS_LIST),7)
             message += "\n\n"
 
-            glist = zip(gdb.db.keys(), gdb.db.values())
-            for (guess, amount) in glist:
+            for (guess, amount) in zip(gdb.db.keys(), gdb.db.values()):
                 if not pcg_table.has_key(guess):
                     pcg_table[guess] = [0]*(i-1)
-                pcg_table[guess].append(amount)
+
+            pprint.pprint(pcg_table)
+            for (guess, values) in zip(pcg_table.keys(), pcg_table.values()):
+                if gdb.has_key(guess):
+                    pcg_table[guess].append(gdb[guess])
+                else:
+                    pcg_table[guess].append(0)
 
         pcg_table = zip(pcg_table.keys(), pcg_table.values())
 
@@ -309,7 +315,7 @@ class Gazonk:
 
         send_message(send_string, recipient)
 
-    def send_letter(self, subject, message, recipient, new, person):
+    def send_letter(self, subject, message, recipient, new, person, extra_comments_to = []):
         recipient_name = kom.ReqGetUconfStat(conn, recipient).response().name
         log("%s: Brev till %s:" % (get_date_and_time(), recipient_name))
         log(indent(message, 2) + "\n")
@@ -318,10 +324,14 @@ class Gazonk:
         rec = kom.MIRecipient(kom.MIR_TO, recipient)
         misc_info.recipient_list.append(rec)
 
+        comments_to = extra_comments_to
         if new == 0 and person == 0 and self.last_text_no > 0:
+            comments_to += [self.last_text_no]
+
+        for ct in comments_to:
             try:
-                ts = conn.textstats[self.last_text_no]
-                mic = kom.MICommentTo(kom.MIC_COMMENT, self.last_text_no)
+                ts = conn.textstats[ct]
+                mic = kom.MICommentTo(kom.MIC_COMMENT, ct)
                 misc_info.comment_to_list.append(mic)
             except:
                 log("Old text number %d not found" % self.last_text_no)
@@ -330,6 +340,7 @@ class Gazonk:
         text_no = kom.ReqCreateText(conn, send_text, misc_info, []).response()
         if person == 0:
             self.last_text_no = text_no
+        return text_no
 
     def check_monthly(self):
         self.tstats.check(self)
@@ -943,73 +954,96 @@ class Stats:
             message += " Antal gissningar per given ledtråd var %3.1f.\n\n" % \
                        (float(self.guesses.count)/float(self.given_clue_count))
 
-        message += """Statistik över personer som gissat:
------------------------------------
- Gissn Korr    k/g   Led GLed   g/k  Gg/k   g/l  Gg/l Person
-"""
+        plist_all = zip(self.people.keys(), self.people.values())
+        plist_all = [(value.make_stat_tuple(), key, value) for (key,value) in plist_all]
 
-        plist_tmp = zip(self.people.values(), self.people.keys())
-        plist = [(value.win_count, \
-                  divide_with_zero(value.win_count, value.guesses.count), \
-                  value.guesses.count, key, value) for (value,key) in plist_tmp]
-        plist.sort()
-        plist.reverse()
+        plist_a = [(st.win_count, st.kpg, st.guesses, p, st, psc) for (st, p, psc) in plist_all]
+        plist_a.sort()
+        plist_a.reverse()
+        plist_a = [(p, st, psc) for (a, b, c, p, st, psc) in plist_a]
 
-        for (korr, kpgn, guesscount, person, pstats) in plist:
-            pname = kom.ReqGetUconfStat(conn, person).response().name
+        letter_a = self.make_stat_letter(plist_a, \
+                                         ["guesses", "win_count", "kpg", \
+                                          "led", "gled", "gpk", "ggpk", "gpl", "ggpl"], \
+                                         "Statistik över personer som gissat:")
 
-            kpg = ""
-            if kpgn != None:
-                kpg = "%3.2f%%" % (kpgn*100.0)
+        if self.total != 1:
+            message += letter_a
 
-            nled = pstats.m_coc.get()
-            led = ""
-            if nled != None:
-                led = "%2.1f" % nled
+        text_no = g.send_letter(subject, message, GAZONK_CONF, 1, 1)
 
-            ngled = pstats.m_coc_mg.get()
-            gled = ""
-            if ngled != None:
-                gled = "%2.1f" % ngled
+        if self.total == 1:
+            g.send_letter(subject, letter_a, GAZONK_CONF, 1, 1, [text_no])
 
-            ngpk = pstats.gpk_coc.get()
-            gpk = ""
-            gpl = ""
-            if ngpk != None:
-                gpk = "%3.1f" % ngpk
-                if nled != None:
-                    gpl = "%3.1f" % (ngpk/nled)
+            plist_b = [(st.kcube_pg, st.win_count, st.guesses, p, st, psc) for (st, p, psc) in plist_all]
+            plist_b.sort()
+            plist_b.reverse()
+            plist_b = [(p, st, psc) for (a, b, c, p, st, psc) in plist_b]
 
-            nggpk = pstats.gpk_coc_mg.get()
-            ggpk = ""
-            ggpl = ""
-            if nggpk != None:
-                ggpk = "%3.1f" % nggpk
-                if ngled != None:
-                    ggpl = "%3.1f" % (nggpk/ngled)
+            letter_b = self.make_stat_letter(plist_b, \
+                                             ["guesses", "win_count", "kpg", "kcube_pg"], \
+                                             "Statistik över personer som gissat:")
+            g.send_letter(subject, letter_b, GAZONK_CONF, 1, 1, [text_no])
 
-            row = string.rjust(str(guesscount),6) + " " + \
-                  string.rjust(str(korr),4) + " " + \
-                  string.rjust(kpg, 7) + " " + \
-                  string.rjust(led, 4) + " " + \
-                  string.rjust(gled, 4) + " " + \
-                  string.rjust(gpk, 5) + " " + \
-                  string.rjust(ggpk, 5) + " " + \
-                  string.rjust(gpl, 5) + " " + \
-                  string.rjust(ggpl, 5) + " " + \
-                  pname
-            row = row[:72]
+            plist_c = [(negate_with_none(st.led), negate_with_none(st.gpk), \
+                        negate_with_none(st.gpl), p, st, psc) for (st, p, psc) in plist_all]
+            plist_c.sort()
+            plist_c.reverse()
+            plist_c = [(p, st, psc) for (a, b, c, p, st, psc) in plist_c]
 
-            glist = zip(pstats.guesses.db.values(), pstats.guesses.db.keys())
-            glist.sort()
-            glist.reverse()
-            message += row + "\n"
+            letter_c = self.make_stat_letter(plist_c, \
+                                             ["guesses", "win_count", "led", "gpk", "gpl"], \
+                                             "Statistik över personer som gissat:")
+            g.send_letter(subject, letter_c, GAZONK_CONF, 1, 1, [text_no])
 
-        g.send_letter(subject, message, GAZONK_CONF, 1, 1)
+            plist_d = [(st.gled, st.ggpk, st.ggpl, p, st, psc) for (st, p, psc) in plist_all]
+            plist_d.sort()
+            plist_d.reverse()
+            plist_d = [(p, st, psc) for (a, b, c, p, st, psc) in plist_d]
+
+            letter_d = self.make_stat_letter(plist_d, \
+                                             ["guesses", "win_count", "gled", "ggpk", "ggpl"], \
+                                             "Statistik över personer som gissat:")
+            g.send_letter(subject, letter_d, GAZONK_CONF, 1, 1, [text_no])
 
         # Now reset the stats for next period.
         if self.total != 1:
             self.reset()
+
+    def make_stat_letter(self, stat_tuples, showed_stats, header):
+        headers = {'guesses': ('Gissn', 5, "%d"), \
+                   'win_count': ('Korr', 4, "%d"), \
+                   'kpg': ('k/g', 7, "%3.2f%%"), \
+                   'kcube_pg': ('k^3/g', 8, "%5.2f"), \
+                   'led': ('Led', 4, "%2.1f"), \
+                   'gled': ('GLed', 4, "%2.1f"), \
+                   'gpk': ('g/k', 5, "%3.1f"), \
+                   'ggpk': ('Gg/k', 5, "%3.1f"), \
+                   'gpl': ('g/l', 5, "%3.1f"), \
+                   'ggpl': ('Gg/l', 5, "%3.1f")}
+
+        message = header + "\n"
+        message += "-"*len(header) + "\n"
+        for ss in showed_stats:
+            message += " " + string.rjust(headers[ss][0], headers[ss][1])
+        message += "\n"
+
+        for (person, s, psc) in stat_tuples:
+            row = ""
+            pname = kom.ReqGetUconfStat(conn, person).response().name
+            for ss in showed_stats:
+                val = getattr(s,ss)
+                if val == None:
+                    row += " " + string.rjust("",headers[ss][1])
+                else:
+                    if headers[ss][2][-2:] == "%%":
+                        valstr = headers[ss][2] % (getattr(s,ss)*100.0)
+                    else:
+                        valstr = headers[ss][2] % getattr(s,ss)
+                    row += " " + string.rjust(valstr, headers[ss][1])
+            row += " " + pname
+            message += row[:72] + "\n"
+        return message
 
 class PersonStats:
     def __init__(self):
@@ -1039,36 +1073,50 @@ class PersonStats:
             self.m_coc.add(cluenr)
             self.gpk_coc.add(self.guesses.count)
 
+    def make_stat_tuple(self):
+        kpg = None
+        kcube_pg = None
+        if self.guesses.count > 0:
+            kpg = float(self.win_count)/float(self.guesses.count)
+            kcube_pg = float((self.win_count)**3)/float(self.guesses.count)
+        led = self.m_coc.get()
+        gled = self.m_coc_mg.get()
+        gpk = self.gpk_coc.get()
+        ggpk = self.gpk_coc_mg.get()
+        gpl = None
+        if gpk != None and led != None:
+            gpl = gpk/led
+        ggpl = None
+        if ggpk != None and gled != None:
+            ggpl = ggpk/gled
+        return StatTuple(self.guesses.count, self.win_count, kpg, kcube_pg, \
+                         led, gled, gpk, ggpk, gpl, ggpl)
+
     def send_person_stats(self, person_no, about_person = None):
+        stat_tuple = self.make_stat_tuple()
+
         message = ""
         if about_person != None:
             message = "Statistik om <Person %d: %s>.\n\n" % about_person
 
-        message += "Gissningar:  %d\n" % self.guesses.count
-        message += "Korrekta:    %d\n" % self.win_count
-        if self.guesses.count > 0:
-            message += "k/g:         %3.2f%%\n" % \
-                       (float(self.win_count)/float(self.guesses.count)*100.0)
-        mc = self.m_coc.get()
-        mcmg = self.m_coc_mg.get()
-        gpk = self.gpk_coc.get()
-        gpkmg = self.gpk_coc_mg.get()
-        if mc != None:
-            message += "Led:         %2.1f\n" % mc
-        if mcmg != None:
-            message += "GLed:        %2.1f\n" % (mcmg)
-        extra = ""
-        if gpk != None:
-            message += "g/k:         %3.1f\n" % gpk
-            if mc != None:
-                extra += "g/l:         %3.1f\n" % (gpk/mc)
-        if gpkmg != None:
-            message += "Gg/k:        %3.1f\n" % (gpkmg)
-            message += extra
-            if mcmg != None:
-                message += "Gg/l:        %3.1f\n" % (gpkmg/mcmg)
-        else:
-            message += extra
+        message += "Gissningar:  %d\n" % stat_tuple.guesses
+        message += "Korrekta:    %d\n" % stat_tuple.win_count
+        if stat_tuple.kpg != None:
+            message += "k/g:         %3.2f%%\n" % (stat_tuple.kpg*100.0)
+        if stat_tuple.kpg != None:
+            message += "k^3/g:       %5.2f\n" % stat_tuple.kcube_pg
+        if stat_tuple.led != None:
+            message += "Led:         %2.1f\n" % stat_tuple.led
+        if stat_tuple.gled != None:
+            message += "GLed:        %2.1f\n" % stat_tuple.gled
+        if stat_tuple.gpk != None:
+            message += "g/k:         %3.1f\n" % stat_tuple.gpk
+        if stat_tuple.ggpk != None:
+            message += "Gg/k:        %3.1f\n" % stat_tuple.ggpk
+        if stat_tuple.gpl != None:
+            message += "g/l:         %3.1f\n" % stat_tuple.gpl
+        if stat_tuple.ggpl != None:
+            message += "Gg/l:        %3.1f\n" % stat_tuple.ggpl
 
         message += "\nTop 50 gissningar (fler än 2):\n"
         message += "------------------\n"
@@ -1146,6 +1194,19 @@ class AverageCoC:
     def merge_into(self, other):
         self.amount += other.amount
         self.total_clues += other.total_clues
+
+class StatTuple:
+    def __init__(self, guesses, win_count, kpg, kcube_pg, led, gled, gpk, ggpk, gpl, ggpl):
+        self.guesses = guesses
+        self.win_count = win_count
+        self.kpg = kpg
+        self.kcube_pg = kcube_pg
+        self.led = led
+        self.gled = gled
+        self.gpk = gpk
+        self.ggpk = ggpk
+        self.gpl = gpl
+        self.ggpl = ggpl
 
 # Loggning
 def log(txt):
@@ -1299,9 +1360,9 @@ def get_next_clue_time(start_time, time_interval, amount):
 
 # Gör en snygg tabell (eventuellt flera) av diverse resultat.
 def write_table(table, desc):
-    ntable = [(-reduce((lambda x, y: x+y), v),d,v) for d,v in table]
+    ntable = [(-reduce((lambda x, y: x+y), v),[-x for x in v],d) for d,v in table]
     ntable.sort()
-    table = [(d,v,-s) for s,d,v in ntable]
+    table = [(d,[-x for x in v],-s) for s,v,d in ntable]
 
     max_length = max([len(desc)] + [len(d) for d,v,s in table])
     h_num = max([len(v) for d,v,s in table])
@@ -1364,6 +1425,12 @@ def divide_with_zero(a,b):
         return float(a)/float(b)
     else:
         return None
+
+# negation
+def negate_with_none(a):
+    if a != None:
+        return -a
+    return None
 
 # Förkorta, dvs ta bort pareneteser ur namn
 def shorten_name(orig_name):

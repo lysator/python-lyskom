@@ -1,3 +1,5 @@
+# -*- coding: iso-8859-1 -*-
+
 import kom
 
 # -- CONFIGURATION BEGINS HERE ---

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: iso-8859-1 -*-
 
 # LysKOM gazonk client
 
@@ -21,7 +22,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.15"
+VERSION="0.3.16"
 
 INVISIBLE = 0
 
@@ -58,6 +59,8 @@ wrong_guess_list = ["Fel, fel, fel, fel!", \
                     "Du fuskar, du har Gooooooglat!!! Men det var ändå fel.", \
                     "Loser!", \
                     "En nyfödd gissar bättre än du.", \
+                    "En daggmask gissar bättre än du.", \
+                    "En amöba gissar bättre än du.", \
                     "Du är ful, och fel gissar du också!", \
                     "Trodde du ja!", \
                     "Hur många tror du inte har gissat på det före dej då?", \
@@ -69,7 +72,12 @@ wrong_guess_list = ["Fel, fel, fel, fel!", \
                     "Men du är ju hopplös!", \
                     "Skärp dig!", \
                     "Du kanske skulle fråga skräphögen om råd.", \
-                    "Det är aldrig försent att ge upp."]
+                    "Det är aldrig försent att ge upp.", \
+                    "Nu ångrar du nog att du hoppade över gazonk-lektionerna i skolan.", \
+                    "Du kanske borde önska dig en gazonk-lösare i julklapp?", \
+                    "Oj, gjorde du en seriös gissning den här gången?", \
+                    "Det tar lång tid att gå igenom alla ord i ordlistan.", \
+                    ]
 
 help_strings = {"": """Grundläggande kommandon:
 ------------------------
@@ -322,7 +330,7 @@ class Gazonk:
         gaz_name = get_komname(self.person_no)
         mess_subject = "%s gazonkar" % shorten_name(gaz_name)
         mess_text = self.create_clue_string(0)
-        mess_text += "------------\n" + self.create_next_clues_string()
+        mess_text += "------------\n" + self.create_next_clues_string(0)
         self.send_letter(mess_subject, mess_text, GAZONK_CONF, new, 0)
 
     def send_clue_message(self, recipient, disp_all, extra_message = None):
@@ -634,9 +642,11 @@ class Gazonk:
                     my_name = get_komname(KOMPERSON)
                     gaz_name = get_komname(self.person_no)
                     subject = "%s har avsagt sig gazonk!" % shorten_name(gaz_name)
-                    message = "Vem som helst kan nu bli gazonk. Skicka bara 'ny gazonk'" + \
-                              "\ni ett meddelande till <Person %d: %s>" % (KOMPERSON, my_name)
-                    self.send_letter(subject, message, GAZONK_CONF, 0, 0)
+                    letter = "Vem som helst kan nu bli gazonk. Skicka bara 'ny gazonk'" + \
+                             "\ni ett meddelande till <Person %d: %s>" % (KOMPERSON, my_name)
+                    self.send_letter(subject, letter, GAZONK_CONF, 0, 0)
+                    message = "Du har nu avsagt dig gazonk-skapet."
+                    send_message(message, msg.sender)
                     self.reset()
                     return
                 else:

@@ -212,7 +212,6 @@ class Gazonk:
                 if not pcg_table.has_key(guess):
                     pcg_table[guess] = [0]*(i-1)
 
-            pprint.pprint(pcg_table)
             for (guess, values) in zip(pcg_table.keys(), pcg_table.values()):
                 if gdb.has_key(guess):
                     pcg_table[guess].append(gdb[guess])

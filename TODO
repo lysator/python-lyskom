@@ -1,9 +1,22 @@
 This is an -*- outline -*- file
 
+10863510 idag 10:57 /2 rader/ Sam /Sodasifon! Spaljé! 
+Kommentar till text 10863444 av dL
+Mottagare: Runsten (när fluffigheten kryper omkring och är ond) <912>
+Mottagare: NL: (I'm sexy because I eat bacon) <732060>
+Mottagare: dL <15492>
+Mottagare: Sam /Sodasifon! Spaljé!  <42756>
+Ärende: Wuff säger hon. ;P
+------------------------------------------------------------
+En tanke till Apan, om det inte redan finns: Trådar med störst antal
+mottagare.
+(10863510) /Sam /Sodasifon! Spaljé! /---------------
+
 THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 
 * komimportmail
 ** Import attachments to a separate conference (aux-item settable)
+** Some attachments (e.g. PGP signatures) as footnotes, not comments.
 ** Undigesting RISKS 
 ** Removing footers
 ** Check what exit code is used for "already present" (duplication)
@@ -14,6 +27,70 @@ THINGS TO DO WITH THE STUFF IN THIS DIRECTORY
 *** Can we use MySQL or some other database instead for more advanced locking?
 ** Profile and optimize (it's rather slow now)
 ** Automatic rotation of maillog
+
+10837694 idag 23:19 /10 rader/ Peter Lundqvist (disjunkt) 
+Kommentar till text 10837609 av RedHog (http://aktivdemokrati.se, NO SOFTWAREPATENTS)
+Mottagare: LysKOM frågor (och) svar <9264>
+Mottagare: LysKOM Elispklient; diskussion och idéer <15594>
+Ärende: Bilder
+------------------------------------------------------------
+Apropos brevbäraren (tack för den Kent!),
+
+Attachments med PGP-signaturer blir allt mer vanligt (vilket i och för
+sig är trevligt). Det stör lite. Man skulle händelsevis inte tänka sig
+ett tillval för att dirigera MIME-paket av typen
+application/pgp-signature hamna i ett separat möte?
+T.ex. ett möte som heter "PGP-signaturer (från här och där)".
+
+Då kan man ju fortfarande läsa signaturen om man någon gång har behov
+av det.
+(10837694) /Peter Lundqvist (disjunkt) /------------
+Kommentar i text 10837713 av C C Magnus Gustavsson, ABD
+Kommentar i text 10837715 av ceder (-) Per Cederqvist
+Läsa nästa kommentar.
+10837713 idag 23:25 /2 rader/ C C Magnus Gustavsson, ABD
+Kommentar till text 10837694 av Peter Lundqvist (disjunkt) 
+Mottagare: LysKOM frågor (och) svar <9266>
+Mottagare: LysKOM Elispklient; diskussion och idéer <15596>
+Ärende: Bilder
+------------------------------------------------------------
+Helst med konfigureringsbart val av möte (så att det fungerar för
+slutna möten också), men det är kanske svårt att fixa.
+(10837713) /C C Magnus Gustavsson, ABD/-------------
+Läsa nästa kommentar.
+10837715 idag 23:26 /2 rader/ ceder (-) Per Cederqvist
+Kommentar till text 10837694 av Peter Lundqvist (disjunkt) 
+Mottagare: LysKOM frågor (och) svar <9267>
+Mottagare: LysKOM Elispklient; diskussion och idéer <15597>
+Ärende: Bilder
+------------------------------------------------------------
+Jag tycker att ett sådant attachment borde läggas in som ett
+aux-item.
+(10837715) /ceder (-) Per Cederqvist/---------------
+
+11298152 idag 12:42 /2 rader/ C C Magnus Gustavsson
+Kommentar till text 10787305 av Kent Engström
+Mottagare: python-lyskom (-) KOM-modul för Python <541>
+Mottagare: Mail, (både på) in- och utsidan <16456>
+Ärende: Brevbäraren
+------------------------------------------------------------
+Det vore mycket trevligt om Brevbäraren även kunde klara av att märka
+UTF-8-brev på rätt sätt, alternativt konvertera till ISO 8859-1.
+(11298152) /C C Magnus Gustavsson/------------------
+
+11561635 idag 09:51 /6 rader/ C C Magnus Gustavsson
+Kommentar till text 11561263
+Mottagare: Spelar roll- och konfliktspel <3932>
+Mottagare: python-lyskom (-) KOM-modul för Python <544>
+Ärende: SV: ASL
+------------------------------------------------------------
+> Content-Type: text/plain;
+> 	charset="utf-8"
+
+Det är inte Pärs utan Brevbärarens fel. Brevbäraren klarar inte
+nyrader i "Content-Type:" och därför blir kodningen på inlägget i
+LysKOM fel. (Se 2.2.3 i RfC 2822.) Jag kollade redan förra gången. :-)
+(11561635) /C C Magnus Gustavsson/------------------
 
 ** Client issues
 *** elisp

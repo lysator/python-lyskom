@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.18 2004/10/03 13:16:20 kent Exp $
+# $Id: komconfstats,v 1.19 2004/12/28 15:22:37 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -36,7 +36,7 @@ import jddate # From the lyspython collection
 import tabulator
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.18 $"
+vc_revision = "$Revision: 1.19 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -241,7 +241,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub.what = "ärenderad"
         sub = sub.add_sub(tabulator.Tabulator)
         sub.what = "inläggsnummer"
-        self.add_report(self.oat)
+        self.add_report(self.oat, suppress = 1)
       
         self.sat = ConfNameTabulator()
         self.sat.prop.title = "Kommentarer med ändrad ärenderad"
@@ -306,12 +306,13 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.prt.prop.title = "Inlägg mottagna av personer"
         self.prt.prop.singularis = "inlägg"
         self.prt.prop.what = "person"
+        self.prt.prop.max_displayed = 10
         sub = self.prt.prop.add_sub(tabulator.Tabulator)
         sub.what = "ärenderad"
-        sub.max_displayed = 50
+        sub.max_displayed = 5
         sub = sub.add_sub(ConfNameTabulator)
         sub.what = "författare"
-        sub.max_displayed = 10
+        sub.max_displayed = 5
         self.add_report(self.prt)
 
         # 2002-08-01: Not interesting enough
@@ -349,41 +350,43 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.cat1.prop.title = "Inlägg med minst 1 kommentar"
         self.cat1.prop.singularis = "inlägg"
         self.cat1.prop.what = "författare"
-        self.add_report(self.cat1)
-        self.add_report(tabulator.Report(self.cat1, relative = 1, min_total_count = 10))
-
+        self.add_report(self.cat1, suppress=1)
+        self.add_report(tabulator.Report(self.cat1, relative = 1, min_total_count = 10), suppress=1)
+        
         self.cat2 = ConfNameTabulator()
         self.cat2.prop.title = "Inlägg med minst 2 kommentarer"
         self.cat2.prop.singularis = "inlägg"
         self.cat2.prop.what = "författare"
-        self.add_report(self.cat2)
-        self.add_report(tabulator.Report(self.cat2, relative = 1, min_total_count = 10))
-
+        self.add_report(self.cat2, suppress=1)
+        self.add_report(tabulator.Report(self.cat2, relative = 1, min_total_count = 10), suppress=1)
+ 
         self.cat3 = ConfNameTabulator()
         self.cat3.prop.title = "Inlägg med minst 3 kommentarer"
         self.cat3.prop.singularis = "inlägg"
         self.cat3.prop.what = "författare"
-        self.add_report(self.cat3)
-        self.add_report(tabulator.Report(self.cat3, relative = 1, min_total_count = 10))
-
+        self.add_report(self.cat3, suppress=1)
+        self.add_report(tabulator.Report(self.cat3, relative = 1, min_total_count = 10), suppress=1)
+ 
         self.cat4 = ConfNameTabulator()
         self.cat4.prop.title = "Inlägg med minst 4 kommentarer"
         self.cat4.prop.singularis = "inlägg"
         self.cat4.prop.what = "författare"
-        self.add_report(self.cat4)
-        self.add_report(tabulator.Report(self.cat4, relative = 1, min_total_count = 10))
-
+        self.add_report(self.cat4, suppress=1)
+        self.add_report(tabulator.Report(self.cat4, relative = 1, min_total_count = 10), suppress=1)
+        
         self.cat5 = ConfNameTabulator()
         self.cat5.prop.title = "Inlägg med minst 5 kommentarer"
         self.cat5.prop.singularis = "inlägg"
         self.cat5.prop.what = "författare"
-        self.add_report(self.cat5)
-        self.add_report(tabulator.Report(self.cat5, relative = 1, min_total_count = 10))
+        self.add_report(self.cat5, suppress=1)
+        self.add_report(tabulator.Report(self.cat5, relative = 1, min_total_count = 10), suppress=1)
 
         self.cat10 = ConfNameTabulator()
         self.cat10.prop.title = "Inlägg med minst 10 kommentarer"
         self.cat10.prop.singularis = "inlägg"
         self.cat10.prop.what = "författare"
+        sub = self.cat10.prop.add_sub(tabulator.Tabulator)
+        sub.what = "inläggsnummer"
         self.add_report(self.cat10)
         self.add_report(tabulator.Report(self.cat10, relative = 1, min_total_count = 10), suppress = 1)
 
@@ -441,7 +444,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.ctt.prop.what = "content-type"
         sub = self.ctt.prop.add_sub(tabulator.Tabulator)
         sub.what = "options"
-        self.add_report(self.ctt)
+        self.add_report(self.ctt, suppress = 1)
      
         self.ent = EvenNumberTabulator()
         self.ent.prop.title = "Jubelinlägg"
@@ -461,7 +464,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub.what = "författare"
         sub = sub.add_sub(tabulator.Tabulator)
         sub.what = "inläggsnummer"
-        self.add_report(self.lent)
+        self.add_report(self.lent, suppress = 1)
 
         self.pal = ConfNameTabulator()
         self.pal.prop.title = "Palindromnummerinlägg"
@@ -477,7 +480,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.lpal.prop.what = "författare"
         sub = self.lpal.prop.add_sub(tabulator.Tabulator)
         sub.what = "inläggsnummer"
-        self.add_report(self.lpal)
+        self.add_report(self.lpal, suppress = 1)
      
         if self.full_text:
             self.wt = WordTabulator()
@@ -510,8 +513,8 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         sub = self.wh.prop.add_sub(ConfNameTabulator)
         sub.what = "författare"
         sub.max_displayed = 5
-        self.add_report(tabulator.Report(self.wh, 1))
-        self.add_report(self.wh)
+        self.add_report(tabulator.Report(self.wh, 1), suppress = 1)
+        self.add_report(self.wh, suppress = 1)
             
         self.dh = DateHistogram()
         self.dh.prop.title = "Inlägg"
@@ -546,7 +549,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.csh.prop.singularis = "inlägg"
         self.csh.prop.what = "antal tecken"
         self.csh.prop.histogram_hide_zero = 1
-        self.add_report(self.csh)
+        self.add_report(self.csh, suppress = 1)
             
         self.lsh = SizeLogHistogram()
         self.lsh.prop.title = "Inlägg"
@@ -735,7 +738,7 @@ class ConfStats(komconfwalker.ConfTemporalWalker):
         self.cat3.tabulate([ts.author], normal = 0)
         self.cat4.tabulate([ts.author], normal = 0)
         self.cat5.tabulate([ts.author], normal = 0)
-        self.cat10.tabulate([ts.author], normal = 0)
+        self.cat10.tabulate([ts.author, str(global_no)], normal = 0)
         if no_c == 0:
             self.cat0.tabulate([ts.author], total = 0)
         else:

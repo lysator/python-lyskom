@@ -88,10 +88,13 @@ HACKER SUMMARY
 
 - komsociate does something similar to Emacs' M-x dissociated-press.
 
+- topmarkings.py collects statistics about Markings on texts.
+
 
 COPYRIGHT
 
-  (C) Copyright 1999, 2000 Kent Engström, Peter Liljenberg, Peter Åstrand.
+  (C) Copyright 1999, 2000, 2002 Kent Engström, Peter Liljenberg, 
+                                 Peter Åstrand, Erik Forsberg.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by

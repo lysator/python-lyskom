@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.4"
+VERSION="0.3.5"
 
 INVISIBLE = 1
 
@@ -85,6 +85,7 @@ help_strings = {"": """Grundläggande kommandon:
 'visa':               Listar givna ledtrådar.
 'ny gazonk':          Bli gazonk, om ingen är gazonk redan.
 'nästa':              Talar om hur långt det är kvar till nästa ledtråd.
+'mina gissningar':    Visar en lista på de ord som du gissat på denna omgång.
 'gamla lösenord':     Visar en lista på de 50 senaste lösenorden.
 'statistik':          Visar lite staitistik om ditt gazonkande.
 'statistik <person>': Visar statistik om given person.""", \
@@ -95,7 +96,7 @@ help_strings = {"": """Grundläggande kommandon:
 'ledtråd':                      Visar alla ledtrådar.
 'ledtråd <en ledtråd>':         Lägger in en ny ledtråd.
 'byt ledtråd <nr> <en ledtråd>: Byter ut en ledtråd mot en annan.
-'sätt in ledtråd <nr> en ledtråd>': Sätter in en ledtråd på given plats.
+'sätt in ledtråd <nr> <en ledtråd>': Sätter in en ledtråd på given plats.
 'ta bort ledtråd <nr>':         Tar bort given ledtråd.
 'gissningar':                   Visar alla gissningar för nuvarande
                                 gazonkning.
@@ -106,7 +107,8 @@ help_strings = {"": """Grundläggande kommandon:
 'tidsintervall <antal>[hms]':   Sätter tidsintervallet som ledtrådar
                                 skall komma med.
 'återställ tidsintervall':      Återställer tidsintervallet till det det
-                                var från början.""", \
+                                var från början.
+'avsäg gazonk':                 Avsäg dig gazonk-titeln.""", \
                 "statistik": """Hjälp över statistik-förkortningar:
 -----------------------------------
 Gissn  = antal gissningar
@@ -137,8 +139,10 @@ class Gazonk:
     re_satt_in_ledtrad = re.compile("^s[Ää]tt in ledtr[Åå]d +([0-9]+) +(.+)$", re.IGNORECASE)
     re_ta_bort_ledtrad = re.compile("^ta bort ledtr[Åå]d +([0-9]+)$", re.IGNORECASE)
     re_gissningar = re.compile("^gissningar *([0-9]*|personer)$", re.IGNORECASE)
+    re_mina_gissningar = re.compile("^mina gissningar$", re.IGNORECASE)
     re_tidsintervall = re.compile("^tidsintervall *([0-9]*) *([hms]) *$", re.IGNORECASE)
     re_ater_tidsintervall = re.compile("^[Åå]terst[Ää]ll tidsintervall$", re.IGNORECASE)
+    re_avsag_gazonk = re.compile("^avs[Ää]g gazonk$", re.IGNORECASE)
     re_gissa = re.compile("^[Gg][Ii][Ss][Ss][Aa] *(.*) *$")
     re_vem = re.compile("^vem$", re.IGNORECASE)
     re_visa = re.compile("^visa$", re.IGNORECASE)
@@ -241,7 +245,7 @@ class Gazonk:
         if len(wholist) == 0:
             return who_string + "Inga personer har gissat.\n"
 
-        wtmp = [(-n, kom.ReqGetUconfStat(conn, s).response().name) for n,s in wholist]
+        wtmp = [(-len(n), kom.ReqGetUconfStat(conn, s).response().name) for (n,s) in wholist]
         wtmp.sort()
         wholist = [(-n,s) for n,s in wtmp]
 
@@ -408,15 +412,18 @@ class Gazonk:
             send_message(help_strings[m.group(1)], msg.sender)
             return
 
+        # Är detta en request för ny gazonk?
+        m = Gazonk.re_ny_gazonk.search(msg.message)
         # Saker som endast kan göras om ingen gazonk finns:
-        if self.person_no == -1:
-            # Är detta en request för ny gazonk?
-            m = Gazonk.re_ny_gazonk.search(msg.message)
-            if m:
+        if m:
+            if self.person_no == -1:
                 self.reset()
                 self.person_no = msg.sender
                 self.set_last_action()
                 send_message("Du är nu ny gazonk!", msg.sender)
+                return
+            else:
+                send_message("Någon är redan gazonk, så du kan inte bli det!");
                 return
 
         # Saker som endast nuvarande gazonk får göra:
@@ -572,6 +579,22 @@ class Gazonk:
                 send_message(message, msg.sender)
                 return
 
+            # Avsäga sig gazonktiteln.
+            m = Gazonk.re_avsag_gazonk(msg.message)
+            if m:
+                if self.current_clue == -1:
+                    my_name = kom.ReqGetUconfStat(conn, KOMPERSON).response().name
+                    gaz_name = kom.ReqGetUconfStat(conn, self.person_no).response().name
+                    subject = "%s har avsagt sig gazonk!" % shorten_name(gaz_name)
+                    message = "Vem som helst kan nu bli gazonk. Skicka bara 'ny gazonk'" + \
+                              "\ni ett meddelande till <Person %d: %s>" % (KOMPERSON, my_name)
+                    self.send_letter(subject, message, GAZONK_CONF, 0, 0)
+                    self.reset()
+                    return
+                else:
+                    send_message("Du kan inte avsäga dig en pågående omgång.", msg.sender)
+                    return
+
             # Ställ om tidsintervallet.
             new_interval = 0
             m = Gazonk.re_tidsintervall.match(msg.message)
@@ -659,6 +682,22 @@ class Gazonk:
                     send_message(message, msg.sender)
             return
 
+        # Visa vad personen gissat på.
+        m = Gazonk.re_mina_gissningar.search(msg.message)
+        if m:
+            if msg.sender == self.person_no:
+                send_message("Du är gazonk och kan därmed inte gissa.", msg.sender)
+                return
+            if self.current_guessers.has_key(msg.sender):
+                message = "Dina gissningar:\n"
+                for g in self.current_guessers[msg.sender]:
+                    if len(g) > 0:
+                        message += g + "\n"
+                send_message(message, msg.sender)
+            else:
+                send_message("Du har inte gissat än.", msg.sender)
+            return
+
         # Visa de 50 senaste lösenorden.
         m = Gazonk.re_gamla_losenord.search(msg.message)
         if m:
@@ -709,9 +748,15 @@ class Gazonk:
 
             # Lägg till en gissning för denna omgång för personen i fråga.
             if self.current_guessers.has_key(msg.sender):
-                self.current_guessers[msg.sender] += 1
+                p_guesses = self.current_guessers[msg.sender]
+                if p_guesses.count(guess) > 0:
+                    send_message("Har du fått alzheimer? Det gissade du ju på nyss ju!\n" +
+                                 "Tur för dig att man bara får gissa på samma ord en gång!",
+                                 msg.sender)
+                    return
+                self.current_guessers[msg.sender].append(guess)
             else:
-                self.current_guessers[msg.sender] = 1
+                self.current_guessers[msg.sender] = [guess]
 
             if guess == self.password:
                 # Lägg till gissningen i lite gissningsdatabaser.
@@ -1220,6 +1265,7 @@ def format_times(time_list, relative_to_time):
 # Tar utifrån föregående tid och tidsintervallet reda på när nästa ledtråd borde komma.
 def get_next_clue_time(start_time, time_interval, amount):
     from_time = start_time
+    now = time.time()
     if GAZ_SLEEP_HOURS.count(time.localtime(start_time).tm_hour) > 0:
         from_time -= float(time.localtime(start_time).tm_min)*60.0
     result = []
@@ -1235,6 +1281,8 @@ def get_next_clue_time(start_time, time_interval, amount):
                 add_hours += 1
             cur_hour += 1
         end_time = from_time + float(time_interval) + float(add_hours)*3600.0
+        if end_time < now:
+            end_time = now
         result.append( end_time )
         from_time = end_time
     return result
@@ -1293,6 +1341,11 @@ if os.path.exists(DUMPFILE):
             gaz.night_started = -1
             gaz.current_time_interval = GAZONK_CLUE_TIME
             gaz.current_guessers = {}
+
+        # Om vi har en version som är mindre än 0.3.5
+        if old_version < [0,3,5]:
+            tmpx = zip(gaz.current_guessers.keys(), gaz.current_guessers.values())
+            gaz.current_guessers = dict([(x,['']*y) for (x,y) in tmpx])
 
         # Uppdatera versionsnumret
         gaz.version = VERSION

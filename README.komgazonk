@@ -31,7 +31,11 @@ Kommandon som alla kan göra:
       för dig själv och den andra tar en valfri person och visar
       statistik för.
 
-   6. 'Gamla lösenord':
+   6. 'Mina gissningar':
+      Med detta kommando visar man alla de gissningar som man gjort under
+      den pågående omgången.
+
+   7. 'Gamla lösenord':
       Kan man använda för att se de senaste 50 lösenorden.
 
 Om du är Gazonk:
@@ -74,6 +78,9 @@ Om du är Gazonk:
       timmar, m för minuter och s för sekunder. Detta går också att
       återställla till det normala värdet genom kommandor 'återställ
       tidsintervall'.
+
+   9. Om du blivit gazonk, men egentligen inte vill vara det kan du använda
+      kommandot 'avsäg gazonk' så är du inte längre gazonk.
 
 Om du inte är Gazonk:
 

@@ -21,7 +21,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.14"
+VERSION="0.3.15"
 
 INVISIBLE = 0
 
@@ -237,11 +237,12 @@ class Gazonk:
                 else:
                     pcg_table[guess].append(0)
 
-        pcg_table = zip(pcg_table.keys(), pcg_table.values())
+        if len(pcg_table) > 0:
+            pcg_table = zip(pcg_table.keys(), pcg_table.values())
 
-        message += "Alla gissningar (S = summa):\n\n"
-        message += write_table(pcg_table, "gissn\\ledtråd")
-        #message += indent(self.current_guesses.create_string(MAX_ENTRIES_GUESS_LIST, "Totalt"),7)
+            message += "Alla gissningar (S = summa):\n\n"
+            message += write_table(pcg_table, "gissn\\ledtråd")
+            #message += indent(self.current_guesses.create_string(MAX_ENTRIES_GUESS_LIST, "Totalt"),7)
         return message
 
     def create_clue_string(self, disp_all):
@@ -1501,6 +1502,8 @@ def get_next_clue_time(start_time, time_interval, amount, nasta = 0):
 
 # Gör en snygg tabell (eventuellt flera) av diverse resultat.
 def write_table(table, desc):
+    if len(table) == 0:
+        return ""
     ntable = [([-x for x in v],d,-reduce((lambda x, y: x+y), v)) for d,v in table]
     ntable.sort()
     table = [(d,[-x for x in v],-s) for v,d,s in ntable]

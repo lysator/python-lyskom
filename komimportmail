@@ -1,6 +1,7 @@
 #!/usr/bin/python-1.5.2
+# -*- python -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komimportmail,v 1.13 1999/10/09 16:11:49 kent Exp $
+# $Id: komimportmail,v 1.14 1999/10/12 18:28:01 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 1.5.2 is needed because of mimereader, which needs
@@ -15,18 +16,27 @@ import rfc1522
 import lockingshelve
 import kom
 import os
-from komimportconfig import *
+from komimportmail_config import *
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.13 $"
+vc_revision = "$Revision: 1.14 $"
 revision = vc_revision[11:-2]
 
-# Error reporting to stderr and logfile
-def fatal(str):
+# Error reporting: send message to stderr and logfile, exit with right code
+def error_exit(str, exit_code):
     line = "FATAL: " + str
     sys.stderr.write(line + "\n")
-    log(line)
-    sys.exit(1)
+    log(line + " (exit: %d)" % exit_code)
+    sys.exit(exit_code)
+
+# Exit codes from sendmail-8.9.3/src/sysexits.c:
+EX_OK = 0
+EX_USAGE = 64
+EX_DATAERR = 65
+EX_NOUSER = 67
+EX_UNAVAILABLE = 69 # Catchall
+EX_TEMPFAIL = 75 # This is the key to making sendmail requeue a mail!
+
 
 # Logging
 
@@ -52,7 +62,7 @@ def create_article_or_add_recipients(mail,
     try:
         message_id = mail.headers["Message-ID"]
     except:
-        fatal("No message ID in mail")
+        error_exit("No message ID in mail", EX_DATAERR)
 
     log("Handling mail with Message-ID: %s" % message_id)
 
@@ -67,7 +77,7 @@ def create_article_or_add_recipients(mail,
     # Map recipient names to conference numbers
     recipient_list = name_list_to_conf_no_list(envelope_recipients)
     if len(recipient_list) == 0:
-        fatal("No valid recipients found")
+        error_exit("No valid recipients found", EX_NOUSER)
 
     # Choose function
     if existing_text_no is None:
@@ -84,23 +94,18 @@ def create_article_or_add_recipients(mail,
 def create_article(mail, envelope_sender, envelope_recipients,
                    message_id):
 
-    # Threading. If the In-Reply-To header is present, we attempt
-    # threading.  According to my interpretation of the mail
-    # standards, the In-Reply-To-field should never contain multiple
-    # ID:s, and there should never be more than one header line of
-    # this type. Is that true? If not, we will have to extend this
-    # code to handle multiple values.
-
-    in_reply_to_text_no = None
-    if mail.headers.has_key("In-Reply-To"):
-        in_reply_to = mail.headers["In-Reply-To"]
+    # Threading
+    
+    parent_text_no = None
+    parent_message_id = message_id_of_parent(mail.headers)
+    if parent_message_id <> None:
         try:
-            (in_reply_to_text_no, created) = message_id_db[in_reply_to]
-            log("In reply to %s (article %d)" % \
-                (in_reply_to, in_reply_to_text_no))
+            (parent_text_no, created) = message_id_db[parent_message_id]
+            log("Comment to %s (article %d)" % \
+                (parent_message_id, parent_text_no))
         except:
-            log("In reply to %s (which cannot be found in KOM)" % \
-                (in_reply_to))
+            log("Comment to %s (which cannot be found in KOM)" % \
+                (parent_message_id))
 
     # MIME multipart handling.  We choose not to preserve the exact
     # hierachical structure of the MIME message itself, as that would
@@ -120,7 +125,7 @@ def create_article(mail, envelope_sender, envelope_recipients,
                                   envelope_sender,
                                   envelope_recipients,
                                   parts[0],
-                                  in_reply_to_text_no,
+                                  parent_text_no,
                                   parent = None)
 
     # Handle the rest of the parts as comments to the first part
@@ -130,7 +135,7 @@ def create_article(mail, envelope_sender, envelope_recipients,
                                           envelope_sender,
                                           envelope_recipients,
                                           part,
-                                          in_reply_to_text_no,
+                                          parent_text_no,
                                           parent = text_no)
         sub_text_nos.append(sub_text_no)
 
@@ -156,7 +161,7 @@ def create_article_part(mail,
                         envelope_sender,
                         recipient_list,
                         part,
-                        in_reply_to_text_no = None,
+                        parent_text_no = None,
                         parent = None):
 
     # Prepare Misc-Info and Aux Item list for later user
@@ -168,9 +173,9 @@ def create_article_part(mail,
         mir = kom.MIRecipient(type = kom.MIR_TO, recpt = conf_no)
         misc_info.recipient_list.append(mir)
 
-    # Threading of main article based on In-Reply-To.
-    if parent is None and in_reply_to_text_no is not None:
-        mic = kom.MICommentTo(kom.MIC_COMMENT, in_reply_to_text_no)
+    # Threading of main article based on In-Reply-To/References
+    if parent is None and parent_text_no is not None:
+        mic = kom.MICommentTo(kom.MIC_COMMENT, parent_text_no)
         misc_info.comment_to_list.append(mic)
 
     # Threading of appendices as comments (or footnotes) to the
@@ -320,7 +325,8 @@ def create_article_part(mail,
     try:
         text_no = send_to_kom(subject, part.data, misc_info, aux_items)
     except:
-        fatal("Failed to create article (error %s)" % sys.exc_info()[0])
+        error_exit("Failed to create article (error %s)" % sys.exc_info()[0],
+                   EX_UNAVAILABLE)
                           
     return text_no
 
@@ -398,11 +404,12 @@ def add_recipients(mail, envelope_sender, recipient_list,
 #
 # Allowable recipient name formats (in the order they are checked):
 # 
-# 1) An integer. The conference/letterbox corresponding to this
+# 1) An integer or an integer prefix by a single "p" or "P".
+#    The conference/letterbox corresponding to this
 #    conf_no is the recipient. Note that an invalid integer results
 #    in a miss. No further alternatives are checked.
 #
-# 2) Any other string. Underscores are converted to spaces and the
+# 3) Any other string. Underscores are converted to spaces and the
 #    name looked up using lookup-z-name. If there is exactly one match,
 #    that conference/letterbox is choosen as recipient.
 
@@ -414,8 +421,14 @@ def name_list_to_conf_no_list(name_list):
         try:
             conf_no = string.atoi(name)
         except:
-            conf_no = None
-
+            if name[0:1] in "pP":
+                try:
+                    conf_no = string.atoi(name[1:])
+                except:
+                    conf_no = None
+            else:
+                conf_no = None
+                
         if conf_no:
             # We have an integer.
             # Do a simple existence check and add.
@@ -429,7 +442,9 @@ def name_list_to_conf_no_list(name_list):
             continue # No other formats will be checked
 
         # 2) Other string = name to look up
-        matches = c.lookup_name(string.replace(name, "_", " "),
+        changed_name = string.replace(string.replace(name, "_", " "),
+                                      ".", " ")
+        matches = c.lookup_name(changed_name,
                                 want_pers = 1,
                                 want_confs = 1)
         if len(matches) == 0:
@@ -443,6 +458,35 @@ def name_list_to_conf_no_list(name_list):
             conf_no_list.append(matches[0][0])            
 
     return conf_no_list
+
+#
+# Given a set of mail headers, guess the Message-ID this message
+# is a comment to. If this does not appear to be a comment to
+# anything, return None.
+# Algorithm: choose last thing in <..> of In-Reply-To. If that
+# header does not exist, try using References instead.
+
+def message_id_of_parent(headers):
+    for field_name in ["In-Reply-To", "References"]:
+        if mail.headers.has_key(field_name):
+            msg_id = last_message_id_in(headers[field_name])
+            if msg_id:
+                log("Threading on %s: %s)" % \
+                    (field_name, msg_id))
+                return msg_id
+            else:
+                log("DEBUG: No ID found in %s: '%s'" % \
+                    (field_name, headers[field_name]))
+    log("No threading possible.")
+    return None
+
+def last_message_id_in(header):
+    pos_lt = string.rfind(header, "<")
+    pos_gt = string.rfind(header, ">")
+    if -1 < pos_lt < pos_gt:
+        return header[pos_lt:pos_gt+1] # Include "<" and ">" in ID
+    else:
+        return None
 
 # Garbage collect the Message-ID database
 def gc_message_id_db():
@@ -478,7 +522,7 @@ def gc_message_id_db():
 if len(sys.argv) == 2 and sys.argv[1] == "--gc":
     gc = 1
 elif len(sys.argv) < 3:
-    fatal("Wrong number of arguments")
+    error_exit("Wrong number of arguments", EX_USAGE)
 else:
     gc = 0
     envelope_sender = sys.argv[1]
@@ -491,15 +535,18 @@ try:
     try:
         kom.ReqLogin(c, KOMPERSON, KOMPASSSWORD, invisible=1).response()
     except:
-        fatal("Failed to login to LysKOM server")
+        # Change to EX_TEMPFAIL if you consider this transient...
+        error_exit("Failed to login to LysKOM server", EX_UNAVAILABLE)
 except:
-    fatal("Failed to connect to LysKOM server")
+    error_exit("Failed to connect to LysKOM server", EX_TEMPFAIL)
 
 # Prepare to use the Message-ID database
 try:
     message_id_db = lockingshelve.LockingShelve(ID_DB_FILE)
 except:
-    fatal("Cannot access Message-ID database")
+    # It's a bit too tough luck to be unsubscribed from a lot of
+    # mailing lists because of this one
+    error_exit("Cannot access Message-ID database", EX_TEMPFAIL)
 
 # Choose function
 if gc:
@@ -514,4 +561,4 @@ else:
     create_article_or_add_recipients(mail, envelope_sender, envelope_recipients)
 
 # Exit successfully
-sys.exit(0)
+sys.exit(EX_OK)

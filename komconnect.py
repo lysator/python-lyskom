@@ -1,18 +1,18 @@
 # -*- coding: iso-8859-1 -*-
 # Utility routines for connection setup (replaces komparam.py)
-# $Id: komconnect.py,v 1.1 2003/09/02 18:19:01 kent Exp $
+# $Id: komconnect.py,v 1.2 2007/01/15 21:02:37 kent Exp $
 # (C) 1999,2003 Kent Engström. Released under GPL.
 
 import getpass
 import sys
 import optparse # Requires Python 2.3
+import os
 
 import kom
 
 
 # FIXME: Things to support in this module if needed:
 # -) port numbers added to the server name ("kom.foo.bar:4894")
-# -) environment variables (KOMSERVER, KOMNAME, KOMPASSWORD)
 # -) ~/.komrc
 
 # Error reporting
@@ -38,18 +38,27 @@ def connect_and_login(options, connection_class = kom.CachedConnection):
     # Get server
     server = options.server
     if server is None:
-        raise Error, "server not specified"
+        if os.environ.has_key("KOMSERVER"):
+            server = os.environ["KOMSERVER"]
+        else:
+            raise Error, "server not specified"
 
     # Get name
     name = options.name
     if name is None:
-        raise Error, "name not specified"
+        if os.environ.has_key("KOMNAME"):
+            name = os.environ["KOMNAME"]
+        else:
+            raise Error, "name not specified"
 
     # Get password
     password = options.password
     if password is None:
-        password = getpass.getpass("Password for %s on %s: " % (name,
-                                                                server))
+        if os.environ.has_key("KOMPASSWORD"):
+            password = os.environ["KOMPASSWORD"]
+        else:
+            password = getpass.getpass("Password for %s on %s: " % (name,
+                                                                    server))
 
     # Connect
     try:

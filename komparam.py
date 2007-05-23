@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komparam.py,v 1.6 2003/09/02 18:18:15 kent Exp $
+# $Id: komparam.py,v 1.7 2007/05/23 14:30:01 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # NOTE: This module is deprecated in favour of komconnect.py

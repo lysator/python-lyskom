@@ -4,7 +4,7 @@
 # Dump persons, conferences and memberships for further analysis by
 # other programs.
 #
-# $Id: dumpmembers,v 1.1 2005/03/03 19:37:40 kent Exp $
+# $Id: dumpmembers,v 1.2 2007/05/23 14:29:37 kent Exp $
 #
 # (C) 2005 Kent Engström. Released under GPL.
 
@@ -57,7 +57,12 @@ n=0
 for pno in sorted(persons.keys()):
     n=n+1
     errwrite("%5d/%5d %s\n" % (n, len(persons), persons[pno]))
-    for ms in  kom.ReqGetMembership11(conn, pno, 0, MAXCONFS, 0, 0).response():
-	cno = ms.conference
-	if cno in conferences:
-	    print "M %d %d" % (pno, cno)
+    try:
+	for ms in  kom.ReqGetMembership11(conn, pno, 0, MAXCONFS, 0, 0).response():
+	    cno = ms.conference
+	    if cno in conferences:
+		print "M %d %d %d %d" % (pno, cno, ms.priority, ms.type.passive)
+    except kom.IndexOutOfRange:
+	errwrite("*** kom.IndexOutOfRange\n")
+	pass
+

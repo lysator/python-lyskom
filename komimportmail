@@ -2,18 +2,16 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.40 2007/05/15 09:42:24 forsberg Exp $
+# $Id: komimportmail,v 1.41 2007/05/24 17:45:36 andjo Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
-# Note: Python 1.5.2 is needed because of mimereader, which needs
-# to call multifile.MultiFile with seekable = 0.
+# Note: Python 2.2.2+ is needed because of email
 
 import sys
 import string
 import time
-import mimereader
-import rfc822
-import rfc1522
+import email, email.Utils, email.Header
+from email.Iterators import typed_subpart_iterator
 import lockingshelve
 import kom
 import os
@@ -24,7 +22,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.40 $"
+vc_revision = "$Revision: 1.41 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -208,7 +206,7 @@ def create_article_or_add_recipients(mail,
 
     # Get Message-ID from mail
     try:
-        message_id = last_message_id_in(mail.headers["Message-ID"])
+        message_id = last_message_id_in(mail["Message-ID"])
     except:
         message_id = None
 
@@ -259,7 +257,7 @@ def create_article(mail, envelope_sender, envelope_recipients,
 
     # Threading
     
-    parent_message_id = message_id_of_parent(mail.headers)
+    parent_message_id = message_id_of_parent(mail)
     if parent_message_id <> None:
         # If the parent seems to be an exported text, we will
         # bypass "normal" handling!
@@ -289,7 +287,7 @@ def create_article(mail, envelope_sender, envelope_recipients,
     # become comments to this article, regardless of the original
     # hierarchical structure in the MIME message.
 
-    parts = mail.linear_list_of_discrete_parts()
+    parts = linear_list_of_discrete_parts(mail)
     log("Number of MIME parts: %d" % len(parts), LOG_INFO)
     
     # Handle the first (perhaps only) part
@@ -436,12 +434,12 @@ def create_article_part(mail,
         ]:
 
         for (display_name, addr_spec) in \
-            mail.headers.getaddrlist(header_name):
-            # Remove outer double qoutes and RFC1522 coding if
+            email.Utils.getaddresses(mail.get_all(header_name, [])):
+            # Remove outer double qoutes and RFC2047 coding if
             # present in the display name.                
             if display_name[0:1] == '"' and display_name[-1:0] == '"':
                 display_name = display_name[1:-1]
-            display_name = rfc1522.decode(display_name)
+            display_name = rfc2047_decode(display_name)
 
             # Recreate mailbox
             if display_name:
@@ -458,8 +456,8 @@ def create_article_part(mail,
                 aux_items.append(kom.AuxItem(aux_item_3, display_name))
 
     # Date
-    if mail.headers.has_key("Date") and not SKIP_AI_MX_DATE:
-        parsed_date = rfc822.parsedate_tz(mail.headers["Date"])
+    if "Date" in mail and not SKIP_AI_MX_DATE:
+        parsed_date = email.Utils.parsedate_tz(mail["Date"])
         if parsed_date is not None:
             try:
                 tz_mins = parsed_date[9] / 60
@@ -482,9 +480,9 @@ def create_article_part(mail,
     # The complete set of mail headers (no decoding of these)
     # This one should not be put on the appendices:
     if top is None:
+        header_str_list = map(lambda a: a[0] + ": " + a[1], mail.items())
         aux_items.append(kom.AuxItem(kom.AI_MX_MISC,
-                                     string.join(mail.headers.headers,
-                                                 "")))
+                                     string.join(header_str_list, "\n")))
 
 
     # Handle MIME headers (creating aux-items)
@@ -494,7 +492,7 @@ def create_article_part(mail,
     # The server rejects bad content-types that does not contain a slash,
     # so we don't try to feed it such bogosities.
 
-    mime_type = part.headers.get("Content-Type", "text/plain").lower()
+    mime_type = part.get_content_type()
     if string.find(mime_type, "/") == -1:
         log("Bad MIME type %s not used" % mime_type, LOG_WARNING)
     else:
@@ -503,7 +501,7 @@ def create_article_part(mail,
         log("MIME type of this part: %s" % mime_type, LOG_INFO)
 
     # MIME filename (Name parameter of Content-Type header)
-    mime_filename = part.headers.getparam("name")
+    mime_filename = part.get_param("name")
     if mime_filename:
         aux_items.append(kom.AuxItem(kom.AI_MX_MIME_FILE_NAME,
                                      mime_filename))
@@ -512,14 +510,13 @@ def create_article_part(mail,
     # For the first part, the MIME headers are mixed together
     # with the mail headers. Therefore, we try to remove
     # non-MIME-headers here.
-    
+
     aux_items.append(kom.AuxItem(kom.AI_MX_MIME_MISC, \
-                                 string.join(only_mime_headers( \
-                                     part.headers.headers), "")))
+                                 string.join(only_mime_headers(part), "")))
 
     # Subject
-    if mail.headers.has_key("Subject"):
-        subject = remove_newlines(rfc1522.decode(mail.headers["Subject"]))
+    if "Subject" in mail:
+        subject = remove_newlines(rfc2047_decode(mail["Subject"]))
     else:
         subject = ""
 
@@ -534,26 +531,27 @@ def create_article_part(mail,
     # Try to create article part
     try:
         if 1 == with_hdr:
-            part.data = (createBodyHeaders(mail.headers, part.headers, top)
-			 + part.data)
-        text_no = send_to_kom(subject, part.data, misc_info, aux_items)
+            part.set_payload(createBodyHeaders(mail, part, top)
+                             + part.get_payload())
+        text_no = send_to_kom(subject, part.get_payload(),
+                              misc_info, aux_items)
     except:
         error_exit("Failed to create article (error %s)" % sys.exc_info()[0],
                    EX_UNAVAILABLE)
                           
     return text_no
 
-def createBodyHeaders(mailheaders, partheaders, top):
+def createBodyHeaders(mail, part, top):
     ret = ""
     if top == None:
-	if mailheaders.has_key("From"):
-	    ret = ret + "From: %s\n" % rfc1522.decode(mailheaders["From"])
-	if mailheaders.has_key("To"):
-	    ret = ret + "To: %s\n" % rfc1522.decode(mailheaders["To"])
-	if mailheaders.has_key("Cc"):
-	    ret = ret + "Cc: %s\n" % rfc1522.decode(mailheaders["CC"])
-	if mailheaders.has_key("Message-ID"):
-	    ret = ret + "Message-ID: %s\n" % mailheaders["Message-ID"]
+	if "From" in mail:
+	    ret = ret + "From: %s\n" % rfc2047_decode(mail["From"])
+	if "To" in mail:
+	    ret = ret + "To: %s\n" % rfc2047_decode(mail["To"])
+	if "Cc" in mail:
+	    ret = ret + "Cc: %s\n" % rfc2047_decode(mail["CC"])
+	if "Message-ID" in mail:
+	    ret = ret + "Message-ID: %s\n" % mail["Message-ID"]
     if "" != ret:
         ret = ret + "\n"
     return ret
@@ -722,10 +720,10 @@ def name_list_to_conf_no_list(name_list):
 # Algorithm: choose last thing in <..> of In-Reply-To. If that
 # header does not exist, try using References instead.
 
-def message_id_of_parent(headers):
+def message_id_of_parent(mail):
     for field_name in ["In-Reply-To", "References"]:
-        if mail.headers.has_key(field_name):
-            msg_id = last_message_id_in(headers[field_name])
+        if field_name in mail:
+            msg_id = last_message_id_in(mail[field_name])
             if msg_id:
                 log("Threading on %s: %s)" % \
                     (field_name, msg_id),
@@ -765,11 +763,11 @@ def exporter_id_to_article_no(id):
 re_good_mime_header = re.compile("(^MIME-Version:|^Content-)",
                                  re.IGNORECASE)
 
-def only_mime_headers(headers):
+def only_mime_headers(mail):
     ok_headers = []
-    for header in headers:
+    for (header, value) in mail.items():
         if re_good_mime_header.match(header):
-            ok_headers.append(header)
+            ok_headers.append(header + ": " + value)
     return ok_headers
 
 #
@@ -802,7 +800,7 @@ def filter_conference(conf, mail):
             return 0 # refuse
         elif mxri.data == "spam":
             # Check for X-Spam-Flag from SpamAssassin:
-            x_spam_flag = mail.headers.get("X-Spam-Flag", "NO")
+            x_spam_flag = mail.get("X-Spam-Flag", "NO")
             if x_spam_flag == "YES":
                 log("Spam mx-refuse-import on conference '%s'" % \
                     (conf.name),
@@ -810,7 +808,7 @@ def filter_conference(conf, mail):
                 return 0 # refuse
         elif mxri.data == "html":
             # Check for text/html content-type on top level
-            mime_type = mail.headers.gettype()
+            mime_type = mail.get_content_type()
             if mime_type == "text/html":
                 log("HTML mx-refuse-import on conference '%s'" % \
                     (conf.name),
@@ -822,6 +820,35 @@ def filter_conference(conf, mail):
                 LOG_WARNING)
 
     return 1 # accept
+
+# Small wrapper for email.Header.decode_header to simplify the
+# usage. We don't need most of the functionality, som just return the
+# first element of the first tuple.
+
+def rfc2047_decode(header_value):
+    return email.Header.decode_header(header_value)[0][0]
+
+def remove_redundant_html(mail):
+    # For the moment, concentrate on the most common case:
+    # - a multipart/alternative with first text/plain, then text/html
+    if mail.is_multipart():
+        for alt in typed_subpart_iterator(mail,
+                                          'multipart',
+                                          'alternative'):
+            parts = alt.get_payload()
+            if len(parts) == 2 and \
+               parts[0].get_content_maintype() == \
+               parts[1].get_content_maintype() == "text" and \
+               parts[0].get_content_subtype() == "plain" and \
+               parts[1].get_content_subtype() == "html":
+                del parts[1]
+
+def linear_list_of_discrete_parts(mail):
+    ll = []
+    for p in mail.walk():
+        if not p.is_multipart():
+            ll.append(p)
+    return ll
 
 # MAIN
 
@@ -913,9 +940,9 @@ elif function == FUNC_DUMP:
 elif function == FUNC_IMPORT_MAIL:
     # Function: Normal mail handling
     try:
-        mail = mimereader.Message(sys.stdin)
+        mail = email.message_from_file(sys.stdin)
         if REMOVE_REDUNDANT_HTML:
-            mail.remove_redundant_html()
+            remove_redundant_html(mail)
         create_article_or_add_recipients(mail,
                                          envelope_sender,
                                          envelope_recipients,
@@ -935,7 +962,7 @@ elif function == FUNC_IMPORT_MAIL:
         log("Traceback: " + tbs, LOG_ERROR)
         sys.stderr.write("An unexpected error occurred. "
                          "The complete error message has been logged to a file "
-                         "where the postmaster may read it.")
+                         "where the postmaster may read it.\n")
         sys.exit(EX_UNAVAILABLE)
 else:
     # Function: ?

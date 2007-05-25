@@ -2,13 +2,12 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.41 2007/05/24 17:45:36 andjo Exp $
+# $Id: komimportmail,v 1.42 2007/05/25 13:45:20 andjo Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
 
 import sys
-import string
 import time
 import email, email.Utils, email.Header
 from email.Iterators import typed_subpart_iterator
@@ -22,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.41 $"
+vc_revision = "$Revision: 1.42 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -52,7 +51,7 @@ LOG_INFO = 2
 LOG_DEBUG = 3
 
 def find_log_level(name):
-    name = string.upper(name)
+    name = name.upper()
     for (l, n) in log_levels.items():
         if name == n:
             return l
@@ -482,7 +481,7 @@ def create_article_part(mail,
     if top is None:
         header_str_list = map(lambda a: a[0] + ": " + a[1], mail.items())
         aux_items.append(kom.AuxItem(kom.AI_MX_MISC,
-                                     string.join(header_str_list, "\n")))
+                                     "\n".join(header_str_list)))
 
 
     # Handle MIME headers (creating aux-items)
@@ -493,7 +492,7 @@ def create_article_part(mail,
     # so we don't try to feed it such bogosities.
 
     mime_type = part.get_content_type()
-    if string.find(mime_type, "/") == -1:
+    if mime_type.find("/") == -1:
         log("Bad MIME type %s not used" % mime_type, LOG_WARNING)
     else:
         aux_items.append(kom.AuxItem(kom.AI_CONTENT_TYPE,
@@ -512,7 +511,7 @@ def create_article_part(mail,
     # non-MIME-headers here.
 
     aux_items.append(kom.AuxItem(kom.AI_MX_MIME_MISC, \
-                                 string.join(only_mime_headers(part), "")))
+                                 "".join(only_mime_headers(part))))
 
     # Subject
     if "Subject" in mail:
@@ -582,7 +581,7 @@ def send_to_kom(subject, body, misc_info, aux_items):
             # try again, if possible.
             attempting_to_send = 0
             try:
-                bad_text_no = string.atoi(str(error_status))
+                bad_text_no = int(str(error_status))
                 log("Article creation failed as commented article %d does not exist" % bad_text_no, LOG_WARNING)
                 for i in range(0,len(misc_info.comment_to_list)):
                     if misc_info.comment_to_list[i].text_no == bad_text_no:
@@ -671,11 +670,11 @@ def name_list_to_conf_no_list(name_list):
 
         # 1) Integer = conf_no
         try:
-            conf_no = string.atoi(name)
+            conf_no = int(name)
         except:
             if name[0:1] in "pP":
                 try:
-                    conf_no = string.atoi(name[1:])
+                    conf_no = int(name[1:])
                 except:
                     conf_no = None
             else:
@@ -694,8 +693,7 @@ def name_list_to_conf_no_list(name_list):
             continue # No other formats will be checked
 
         # 2) Other string = name to look up
-        changed_name = string.replace(string.replace(name, "_", " "),
-                                      ".", " ")
+        changed_name = name.replace("_", " ").replace(".", " ")
         matches = c.lookup_name(changed_name,
                                 want_pers = 1,
                                 want_confs = 1)
@@ -737,8 +735,8 @@ def message_id_of_parent(mail):
     return None
 
 def last_message_id_in(header):
-    pos_lt = string.rfind(header, "<")
-    pos_gt = string.rfind(header, ">")
+    pos_lt = header.rfind("<")
+    pos_gt = header.rfind(">")
     if -1 < pos_lt < pos_gt:
         return header[pos_lt:pos_gt+1] # Include "<" and ">" in ID
     else:
@@ -958,7 +956,7 @@ elif function == FUNC_IMPORT_MAIL:
     except:
         # Log exception to file, instead of showing it in the bounce
         (t,v,tb) = sys.exc_info()
-        tbs = string.join(traceback.format_exception(t,v,tb), "")
+        tbs = "".join(traceback.format_exception(t,v,tb))
         log("Traceback: " + tbs, LOG_ERROR)
         sys.stderr.write("An unexpected error occurred. "
                          "The complete error message has been logged to a file "

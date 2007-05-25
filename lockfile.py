@@ -1,5 +1,6 @@
+# -*- python -*- -*- coding: iso-8859-1 -*-
 # Primitive lock file handling 
-# $Id: lockfile.py,v 1.2 1999/10/09 14:18:55 kent Exp $
+# $Id: lockfile.py,v 1.3 2007/05/25 13:40:23 andjo Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 # NOTE! Just enough for the needs of lockingshelve. Use with caution.
 

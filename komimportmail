@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.42 2007/05/25 13:45:20 andjo Exp $
+# $Id: komimportmail,v 1.43 2007/12/01 13:53:28 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.42 $"
+vc_revision = "$Revision: 1.43 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -233,10 +233,13 @@ def create_article_or_add_recipients(mail,
     if len(recipient_list) == 0:
         error_exit("No valid recipients found", EX_NOUSER)
 
-    # Remove recipients based on mx-refuse-import
-    recipient_list = filter_mx_refuse_import(recipient_list, mail)
+    # Remove recipients based on the import restrictions aux-items
+    # mx-refuse-import and mx-allow-envelope-sender-regexp
+    recipient_list = filter_recipients(recipient_list,
+                                       mail,
+                                       envelope_sender)
     if len(recipient_list) == 0:
-        log("No recipients left after mx-refuse-import handling", LOG_INFO)
+        log("No recipients left after import restrictions handling", LOG_INFO)
         return
 
     # Choose function
@@ -769,10 +772,11 @@ def only_mime_headers(mail):
     return ok_headers
 
 #
-# Filter recpient list to respect mx-refuse-import
+# Filter recipient list to respect mx-refuse-import and
+# mx-allow-envelope-sender-regexp
 #
 
-def filter_mx_refuse_import(recipient_list, mail):
+def filter_recipients(recipient_list, mail, envelope_sender):
     ok_to_import_to = []
     for conf_no in recipient_list:
         try:
@@ -783,12 +787,18 @@ def filter_mx_refuse_import(recipient_list, mail):
             ok_to_import_to.append(conf_no) # Play it safe...
             continue
 
-        if filter_conference(conf, mail):
+        if (check_mx_refuse_import(conf, mail) and
+            check_mx_allow_envelope_sender_regexp(conf, envelope_sender)):
             ok_to_import_to.append(conf_no)
 
     return ok_to_import_to
 
-def filter_conference(conf, mail):
+#
+# Does this recipient allow import of this mail based on
+# mx-refuse-import?
+#
+
+def check_mx_refuse_import(conf, mail):
     for mxri in kom.all_aux_items_with_tag(conf.aux_items,
                                            kom.AI_MX_REFUSE_IMPORT):
         if mxri.data == "all":
@@ -818,6 +828,26 @@ def filter_conference(conf, mail):
                 LOG_WARNING)
 
     return 1 # accept
+
+#
+# Does this recipient allow import of this mail based on
+# mx-allow-envelope-sender-regexp?
+#
+
+def check_mx_allow_envelope_sender_regexp(conf, envelope_sender):
+    for mxri in kom.all_aux_items_with_tag(conf.aux_items,
+                                           kom.AI_MX_ALLOW_ENVELOPE_SENDER_REGEXP):
+        try:
+            if re.match(mxri.data, envelope_sender):
+                return 1 # accept
+        except:
+            log("Bad envelope sender regexp ignored (%s)" % (mxri.data),
+                LOG_WARNING)
+            
+
+    return 0 # refuse
+
+
 
 # Small wrapper for email.Header.decode_header to simplify the
 # usage. We don't need most of the functionality, som just return the

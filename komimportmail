@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.43 2007/12/01 13:53:28 kent Exp $
+# $Id: komimportmail,v 1.44 2007/12/02 15:09:12 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.43 $"
+vc_revision = "$Revision: 1.44 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -835,15 +835,18 @@ def check_mx_refuse_import(conf, mail):
 #
 
 def check_mx_allow_envelope_sender_regexp(conf, envelope_sender):
-    for mxri in kom.all_aux_items_with_tag(conf.aux_items,
-                                           kom.AI_MX_ALLOW_ENVELOPE_SENDER_REGEXP):
+    items = kom.all_aux_items_with_tag(conf.aux_items,
+                                       kom.AI_MX_ALLOW_ENVELOPE_SENDER_REGEXP)
+    if len(items) == 0:
+        return 1 # accept
+
+    for mxaesr in items:
         try:
-            if re.match(mxri.data, envelope_sender):
+            if re.match(mxaesr.data, envelope_sender):
                 return 1 # accept
         except:
-            log("Bad envelope sender regexp ignored (%s)" % (mxri.data),
+            log("Bad envelope sender regexp ignored (%s)" % (mxaesr.data),
                 LOG_WARNING)
-            
 
     return 0 # refuse
 

@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.44 2007/12/02 15:09:12 kent Exp $
+# $Id: komimportmail,v 1.45 2007/12/04 22:15:02 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.44 $"
+vc_revision = "$Revision: 1.45 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -204,9 +204,10 @@ def create_article_or_add_recipients(mail,
     log("Starting on %s." % time.ctime(time.time()), LOG_INFO)
 
     # Get Message-ID from mail
-    try:
-        message_id = last_message_id_in(mail["Message-ID"])
-    except:
+    if "Message-ID" in mail:
+        message_id = last_message_id_in(mail["Message-ID"],
+                                        fail_on_bad_format = False)
+    else:
         message_id = None
 
     if message_id is None or message_id == "<>":
@@ -530,17 +531,13 @@ def create_article_part(mail,
             subject = APPENDIX_SUBJECT_PREFIX_NONAME + subject
 
     log("create_article_part, with_hdr: %d" % with_hdr, LOG_DEBUG)
+
     # Try to create article part
-    try:
-        if 1 == with_hdr:
-            part.set_payload(createBodyHeaders(mail, part, top)
-                             + part.get_payload())
-        text_no = send_to_kom(subject, part.get_payload(),
-                              misc_info, aux_items)
-    except:
-        error_exit("Failed to create article (error %s)" % sys.exc_info()[0],
-                   EX_UNAVAILABLE)
-                          
+    if 1 == with_hdr:
+        part.set_payload(createBodyHeaders(mail, part, top)
+                         + part.get_payload())
+    text_no = send_to_kom(subject, part.get_payload(),
+                          misc_info, aux_items)
     return text_no
 
 def createBodyHeaders(mail, part, top):
@@ -737,13 +734,16 @@ def message_id_of_parent(mail):
     log("No threading possible.", LOG_INFO)
     return None
 
-def last_message_id_in(header):
+def last_message_id_in(header, fail_on_bad_format = True):
     pos_lt = header.rfind("<")
     pos_gt = header.rfind(">")
     if -1 < pos_lt < pos_gt:
         return header[pos_lt:pos_gt+1] # Include "<" and ">" in ID
     else:
-        return None
+        if fail_on_bad_format:
+            return None
+        else:
+            return header
 
 # Try to convert a Message-ID from an exporter to 
 # an article number. Return that number or None
@@ -986,7 +986,7 @@ elif function == FUNC_IMPORT_MAIL:
         error_exit("MemoryError, try later", EX_TEMPFAIL)
     except kom.TemporaryFailure:
         error_exit("Temporary Failure, try later", EX_TEMPFAIL)
-    except:
+    except StandardError:
         # Log exception to file, instead of showing it in the bounce
         (t,v,tb) = sys.exc_info()
         tbs = "".join(traceback.format_exception(t,v,tb))

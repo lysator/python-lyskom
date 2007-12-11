@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.47 2007/12/11 19:46:09 kent Exp $
+# $Id: komimportmail,v 1.48 2007/12/11 20:28:23 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.47 $"
+vc_revision = "$Revision: 1.48 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -197,7 +197,8 @@ class MessageIDDb:
 # Create an article or add recipients to an existing one
 def create_article_or_add_recipients(mail,
                                      envelope_sender,
-                                     envelope_recipients):
+                                     envelope_recipients,
+                                     with_hdr):
 
     # Log start
     log("Starting on %s." % time.ctime(time.time()), LOG_INFO)
@@ -246,7 +247,7 @@ def create_article_or_add_recipients(mail,
     if existing_text_no is None:
         # We should create a new article based on this mail
         create_article(mail, envelope_sender, recipient_list,
-                       message_id)
+                       message_id, with_hdr)
     else:
         # We should add new recipients to this article
         add_recipients(mail, envelope_sender, recipient_list,
@@ -255,7 +256,7 @@ def create_article_or_add_recipients(mail,
 
 # Create a new article based on this mail
 def create_article(mail, envelope_sender, envelope_recipients,
-                   message_id):
+                   message_id, with_hdr):
 
     # Threading
     
@@ -300,7 +301,8 @@ def create_article(mail, envelope_sender, envelope_recipients,
                                   parts[0],
                                   parent_message_id,
                                   parent_text_no,
-                                  top = None)
+                                  top = None,
+                                  with_hdr = with_hdr)
 
     # Handle the rest of the parts as comments to the first part
     sub_text_nos = []
@@ -357,7 +359,8 @@ def create_article_part(mail,
                         part,
                         parent_message_id = None,
                         parent_text_no = None,
-                        top = None):
+                        top = None,
+                        with_hdr = 0):
 
     # Prepare Misc-Info and Aux Item list for later user
     misc_info = kom.CookedMiscInfo()
@@ -528,8 +531,10 @@ def create_article_part(mail,
             subject = APPENDIX_SUBJECT_PREFIX_NONAME + subject
 
     # Try to create article part
-    text_no = send_to_kom(subject, part.get_payload(decode=True),
-                          misc_info, aux_items)
+    payload = part.get_payload(decode=True)
+    if with_hdr:
+        payload = createBodyHeaders(mail, part, top) + payload
+    text_no = send_to_kom(subject, payload, misc_info, aux_items)
     return text_no
 
 def createBodyHeaders(mail, part, top):
@@ -893,6 +898,7 @@ def linear_list_of_discrete_parts(mail):
 FUNC_IMPORT_MAIL = 0; FUNC_GC = 1; FUNC_DUMP = 2
 function = FUNC_IMPORT_MAIL
 log_level = LOG_INFO
+with_hdr = 0
 
 try:
     options, arguments = getopt.getopt(sys.argv[1:],
@@ -912,7 +918,7 @@ for (opt, optarg) in options:
     elif opt == "--dump":
         function = FUNC_DUMP
     elif opt == "--with-hdr":
-        log("Ignoring --with-hdr", LOG_WARNING)
+        with_hdr = 1
     elif opt == "--log-level":
         try:
             new_log_level = find_log_level(optarg)
@@ -967,7 +973,8 @@ elif function == FUNC_IMPORT_MAIL:
             remove_redundant_html(mail)
         create_article_or_add_recipients(mail,
                                          envelope_sender,
-                                         envelope_recipients)
+                                         envelope_recipients,
+                                         with_hdr)
     except kom.ReceiveError:
         error_exit("Receive Error, try later", EX_TEMPFAIL)
     except kom.OutOfmemory:

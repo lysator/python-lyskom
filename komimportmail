@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.45 2007/12/04 22:15:02 kent Exp $
+# $Id: komimportmail,v 1.46 2007/12/11 19:40:35 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.45 $"
+vc_revision = "$Revision: 1.46 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -197,8 +197,7 @@ class MessageIDDb:
 # Create an article or add recipients to an existing one
 def create_article_or_add_recipients(mail,
                                      envelope_sender,
-                                     envelope_recipients,
-                                     with_hdr):
+                                     envelope_recipients):
 
     # Log start
     log("Starting on %s." % time.ctime(time.time()), LOG_INFO)
@@ -247,7 +246,7 @@ def create_article_or_add_recipients(mail,
     if existing_text_no is None:
         # We should create a new article based on this mail
         create_article(mail, envelope_sender, recipient_list,
-                       message_id, with_hdr)
+                       message_id)
     else:
         # We should add new recipients to this article
         add_recipients(mail, envelope_sender, recipient_list,
@@ -256,7 +255,7 @@ def create_article_or_add_recipients(mail,
 
 # Create a new article based on this mail
 def create_article(mail, envelope_sender, envelope_recipients,
-                   message_id, with_hdr):
+                   message_id):
 
     # Threading
     
@@ -301,8 +300,7 @@ def create_article(mail, envelope_sender, envelope_recipients,
                                   parts[0],
                                   parent_message_id,
                                   parent_text_no,
-                                  top = None,
-                                  with_hdr = with_hdr)
+                                  top = None)
 
     # Handle the rest of the parts as comments to the first part
     sub_text_nos = []
@@ -359,8 +357,7 @@ def create_article_part(mail,
                         part,
                         parent_message_id = None,
                         parent_text_no = None,
-                        top = None,
-                        with_hdr = 0):
+                        top = None):
 
     # Prepare Misc-Info and Aux Item list for later user
     misc_info = kom.CookedMiscInfo()
@@ -530,13 +527,8 @@ def create_article_part(mail,
         else:
             subject = APPENDIX_SUBJECT_PREFIX_NONAME + subject
 
-    log("create_article_part, with_hdr: %d" % with_hdr, LOG_DEBUG)
-
     # Try to create article part
-    if 1 == with_hdr:
-        part.set_payload(createBodyHeaders(mail, part, top)
-                         + part.get_payload())
-    text_no = send_to_kom(subject, part.get_payload(),
+    text_no = send_to_kom(subject, part.get_payload(decode=True),
                           misc_info, aux_items)
     return text_no
 
@@ -901,7 +893,6 @@ def linear_list_of_discrete_parts(mail):
 FUNC_IMPORT_MAIL = 0; FUNC_GC = 1; FUNC_DUMP = 2
 function = FUNC_IMPORT_MAIL
 log_level = LOG_INFO
-with_hdr = 0
 
 try:
     options, arguments = getopt.getopt(sys.argv[1:],
@@ -921,7 +912,7 @@ for (opt, optarg) in options:
     elif opt == "--dump":
         function = FUNC_DUMP
     elif opt == "--with-hdr":
-        with_hdr = 1
+        log("Ignoring --with-hdr", LOG_WARNING)
     elif opt == "--log-level":
         try:
             new_log_level = find_log_level(optarg)
@@ -976,8 +967,7 @@ elif function == FUNC_IMPORT_MAIL:
             remove_redundant_html(mail)
         create_article_or_add_recipients(mail,
                                          envelope_sender,
-                                         envelope_recipients,
-                                         with_hdr)
+                                         envelope_recipients)
     except kom.ReceiveError:
         error_exit("Receive Error, try later", EX_TEMPFAIL)
     except kom.OutOfmemory:

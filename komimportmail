@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.46 2007/12/11 19:40:35 kent Exp $
+# $Id: komimportmail,v 1.47 2007/12/11 19:46:09 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.46 $"
+vc_revision = "$Revision: 1.47 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -512,7 +512,7 @@ def create_article_part(mail,
     # non-MIME-headers here.
 
     aux_items.append(kom.AuxItem(kom.AI_MX_MIME_MISC, \
-                                 "".join(only_mime_headers(part))))
+                                 "\n".join(only_mime_headers(part))))
 
     # Subject
     if "Subject" in mail:

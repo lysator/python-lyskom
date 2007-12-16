@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.49 2007/12/11 21:03:56 kent Exp $
+# $Id: komimportmail,v 1.50 2007/12/16 18:49:38 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.49 $"
+vc_revision = "$Revision: 1.50 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -532,6 +532,15 @@ def create_article_part(mail,
 
     # Try to create article part
     payload = part.get_payload(decode=True)
+
+    # Searching for a bug: we sometimes seem to get None as the
+    # payload. The docs say that this is because we call get_payload
+    # with decode=True on a multipart. But how could part be multipart.
+    # See if we can get our hands on a message to debug.
+    if payload is None:
+        payload = "[komimportmail error - multipart seen in create_article_part - please report this.]\n"
+        log("multipart seen in create_article_part", LOG_WARNING)
+
     if with_hdr:
         payload = createBodyHeaders(mail, part, top) + payload
     text_no = send_to_kom(subject, payload, misc_info, aux_items)
@@ -968,7 +977,11 @@ elif function == FUNC_DUMP:
 elif function == FUNC_IMPORT_MAIL:
     # Function: Normal mail handling
     try:
-        mail = email.message_from_file(sys.stdin)
+        try:
+            mail = email.message_from_file(sys.stdin)
+        except RuntimeError:
+            error_exit("RuntimeError, message probably malformed", EX_UNAVAILABLE)
+            
         if REMOVE_REDUNDANT_HTML:
             remove_redundant_html(mail)
         create_article_or_add_recipients(mail,

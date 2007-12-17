@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.51 2007/12/17 17:04:09 kent Exp $
+# $Id: komimportmail,v 1.52 2007/12/17 17:06:13 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.51 $"
+vc_revision = "$Revision: 1.52 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -539,7 +539,7 @@ def create_article_part(mail,
     # Workaround: use str(msg) instead of msg.get_payload(decode=True)
     # as a fallback.
     if payload is None:
-        payload = str(msg)
+        payload = str(part)
         if payload is None:
             payload = ""
             log("get_payload workaround failed", LOG_WARNING)

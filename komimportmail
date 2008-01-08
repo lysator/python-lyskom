@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.52 2007/12/17 17:06:13 kent Exp $
+# $Id: komimportmail,v 1.53 2008/01/08 19:19:13 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.52 $"
+vc_revision = "$Revision: 1.53 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -495,7 +495,7 @@ def create_article_part(mail,
     # The server rejects bad content-types that does not contain a slash,
     # so we don't try to feed it such bogosities.
 
-    mime_type = part.get_content_type()
+    mime_type = part.get("Content-Type", "text/plain").lower()
     if mime_type.find("/") == -1:
         log("Bad MIME type %s not used" % mime_type, LOG_WARNING)
     else:

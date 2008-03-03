@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.53 2008/01/08 19:19:13 kent Exp $
+# $Id: komimportmail,v 1.54 2008/03/03 20:55:49 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.53 $"
+vc_revision = "$Revision: 1.54 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -442,7 +442,7 @@ def create_article_part(mail,
             # present in the display name.                
             if display_name[0:1] == '"' and display_name[-1:0] == '"':
                 display_name = display_name[1:-1]
-            display_name = rfc2047_decode(display_name)
+            display_name = rfc2047_decode_lossy_to_iso_8859_1(display_name)
 
             # Recreate mailbox
             if display_name:
@@ -503,6 +503,10 @@ def create_article_part(mail,
                                      mime_type))
         log("MIME type of this part: %s" % mime_type, LOG_INFO)
 
+    # Get the charset from the mime_type (None if not given)
+    charset = part.get_param("charset")
+    log("Charset of this part: %s" % charset, LOG_INFO)
+    
     # MIME filename (Name parameter of Content-Type header)
     mime_filename = part.get_param("name")
     if mime_filename:
@@ -519,7 +523,7 @@ def create_article_part(mail,
 
     # Subject
     if "Subject" in mail:
-        subject = remove_newlines(rfc2047_decode(mail["Subject"]))
+        subject = rfc2047_decode_to_unicode(mail["Subject"])
     else:
         subject = ""
 
@@ -529,6 +533,10 @@ def create_article_part(mail,
             subject = APPENDIX_SUBJECT_PREFIX % mime_filename + subject
         else:
             subject = APPENDIX_SUBJECT_PREFIX_NONAME + subject
+
+    # Encode subject to match th ebody
+    subject = best_effort_encode_subject_to_charset(subject, charset)
+    subject = remove_newlines(subject)
 
     # Try to create article part
     payload = part.get_payload(decode=True)
@@ -553,11 +561,11 @@ def createBodyHeaders(mail, part, top):
     ret = ""
     if top == None:
 	if "From" in mail:
-	    ret = ret + "From: %s\n" % rfc2047_decode(mail["From"])
+	    ret = ret + "From: %s\n" % rfc2047_decode_lossy_to_iso_8859_1(mail["From"])
 	if "To" in mail:
-	    ret = ret + "To: %s\n" % rfc2047_decode(mail["To"])
+	    ret = ret + "To: %s\n" % rfc2047_decode_lossy_to_iso_8859_1(mail["To"])
 	if "Cc" in mail:
-	    ret = ret + "Cc: %s\n" % rfc2047_decode(mail["CC"])
+	    ret = ret + "Cc: %s\n" % rfc2047_decode_lossy_to_iso_8859_1(mail["CC"])
 	if "Message-ID" in mail:
 	    ret = ret + "Message-ID: %s\n" % mail["Message-ID"]
     if "" != ret:
@@ -860,13 +868,38 @@ def check_mx_allow_envelope_sender_regexp(conf, envelope_sender):
     return 0 # refuse
 
 
+# RFC2047 handling
 
-# Small wrapper for email.Header.decode_header to simplify the
-# usage. We don't need most of the functionality, som just return the
-# first element of the first tuple.
+def rfc2047_decode_to_unicode(header_value):
+    out = []
+    for (part, coding) in email.Header.decode_header(header_value):
+        if coding is None:
+            coding = "us-ascii"
 
-def rfc2047_decode(header_value):
-    return email.Header.decode_header(header_value)[0][0]
+        try:
+            decoded_part = part.decode(coding)
+        except LookupError:
+            # Assume it is ISO-8859-1. Ugly...
+            decoded_part = part.decode('iso-8859-1')
+
+        out.append(decoded_part)
+    return u" ".join(out)
+
+def rfc2047_decode_lossy_to_iso_8859_1(header_value):
+    u = rfc2047_decode_to_unicode(header_value)
+    return u.encode("iso-8859-1", "replace")
+
+def best_effort_encode_subject_to_charset(s, charset):
+    if charset is None or charset.lower() == "us-ascii":
+        charset = "iso-8859-1"
+    
+    try:
+        return s.encode(charset, "replace")
+    except LookupError:
+        log("Cannot recode subject to charset %s (will use iso-8859-1)" % charset, LOG_WARNING)
+        return s.encode("iso-8859-1", "replace")
+
+# HTML handling
 
 def remove_redundant_html(mail):
     # For the moment, concentrate on the most common case:

@@ -2,7 +2,7 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM email import
 
-# $Id: komimportmail,v 1.54 2008/03/03 20:55:49 kent Exp $
+# $Id: komimportmail,v 1.55 2008/03/16 19:25:48 kent Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Note: Python 2.2.2+ is needed because of email
@@ -21,7 +21,7 @@ import getopt
 import traceback
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.54 $"
+vc_revision = "$Revision: 1.55 $"
 revision = vc_revision[11:-2]
 
 # Error reporting: send message to stderr and logfile, exit with right code
@@ -878,8 +878,10 @@ def rfc2047_decode_to_unicode(header_value):
 
         try:
             decoded_part = part.decode(coding)
-        except LookupError:
+        except (LookupError, UnicodeDecodeError):
             # Assume it is ISO-8859-1. Ugly...
+            # We take this path both if the coding is unknown and
+            # if the decoding fails (e.g. declared as ASCII but charcode>= 128)
             decoded_part = part.decode('iso-8859-1')
 
         out.append(decoded_part)

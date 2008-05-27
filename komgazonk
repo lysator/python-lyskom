@@ -465,7 +465,7 @@ class Gazonk:
         # Behöver man hjälp?
         m = Gazonk.re_hjalp.match(msg.message)
         if m:
-            send_message(help_strings[m.group(1)], msg.sender)
+            send_message(help_strings[string.lower(m.group(1))], msg.sender)
             return
 
         # Är detta en request för ny gazonk?

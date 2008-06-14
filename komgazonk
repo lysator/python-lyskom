@@ -367,7 +367,9 @@ class Gazonk:
         send_text = subject + "\n" + message
         text_no = None
         try:
-            text_no = kom.ReqCreateText(conn, send_text, misc_info, []).response()
+            content_type = kom.AuxItem(kom.AI_CONTENT_TYPE,
+                                       "text/plain; charset=iso-8859-1")
+            text_no = kom.ReqCreateText(conn, send_text, misc_info, [content_type]).response()
             if person == 0:
                 self.last_text_no = text_no
         except:

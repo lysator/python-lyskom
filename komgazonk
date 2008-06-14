@@ -22,7 +22,7 @@ import random
 import copy
 
 CLIENTNAME="komgazonk"
-VERSION="0.3.16"
+VERSION="0.3.17"
 
 INVISIBLE = 0
 
@@ -367,9 +367,12 @@ class Gazonk:
         send_text = subject + "\n" + message
         text_no = None
         try:
-            content_type = kom.AuxItem(kom.AI_CONTENT_TYPE,
-                                       "text/plain; charset=iso-8859-1")
-            text_no = kom.ReqCreateText(conn, send_text, misc_info, [content_type]).response()
+            aux_items = []
+            aux_items.append(kom.AuxItem(kom.AI_CONTENT_TYPE,
+                                         "text/plain; charset=iso-8859-1"))
+            aux_items.append(kom.AuxItem(kom.AI_CREATING_SOFTWARE,
+                                         "%s %s" % (CLIENTNAME, VERSION)))
+            text_no = kom.ReqCreateText(conn, send_text, misc_info, aux_items).response()
             if person == 0:
                 self.last_text_no = text_no
         except:

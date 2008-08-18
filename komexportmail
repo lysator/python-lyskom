@@ -1,0 +1,832 @@
+#!/usr/bin/env python
+# -*- python -*- -*- coding: iso-8859-1 -*-
+# LysKOM export via email
+
+# $Id: komexportmail,v 1.1 2008/08/18 18:08:20 mag Exp $
+# (C) 2008 C C Magnus Gustavsson. Released under the GPL.
+
+# Get revision number from the version control system
+vc_revision = "$Revision: 1.1 $"
+revision = vc_revision[11:-2]
+
+from komexportmail_config import *
+
+import kom
+import sys
+import re
+import string
+import signal
+import select
+import socket
+import smtplib
+
+from email.Header import Header
+from email.Message import Message
+from email.Utils import formatdate
+
+
+class dualdict(dict):
+    """A dictionary subclass to provide a reverse lookup method, given that
+    the values are unique and immutable."""
+
+    def __init__(self, dictionary):
+        dict.__init__(self, dictionary)
+        self.reverse = dict([(v, k) for k, v in self.items()])
+
+    def __setitem__(self, key, value):
+        dict.__setitem__(self, key, value)
+        self.reverse.__setitem__(value, key)
+
+    def rev(self, key, default=None):
+        return self.reverse.get(key, default)
+
+class translator(dualdict):
+    """Translate strings by looking them up in a dual dictionary."""
+
+    def get(self, word, reverse=False):
+        if reverse:
+            return dualdict.rev(self, word, word)
+        else:
+            return dualdict.get(self, word, word)
+
+
+class ExportDB:
+    """The ExportDB is a dict of exported conferences, each with a dict of
+    exporting users. Each such dict contains an address list for exporting
+    texts to (key 'export'), as well as a number of settings."""
+
+    def __init__(self, dbfile):
+        import shelve
+        self.database = shelve.open(dbfile, writeback=True)
+        # Store revision number for possible future use
+        self.database['revision'] = revision
+
+    def close(self):
+        self.database.close()
+
+    def sync(self):
+        self.database.sync()
+
+    def set_value(self, conf, user, key, value):
+        self.database[str(conf)][str(user)][key] = value
+        self.sync()
+
+    def delete_value(self, conf, user, key):
+        del self.database[str(conf)][str(user)][key]
+        self.sync()
+
+    def get_value(self, conf, user, key):
+        return self.database[str(conf)][str(user)][key]
+
+    def user_list(self, conf):
+        return self.database.get(str(conf), {}).keys()
+
+    def export_list(self, conf, user):
+        return self.get_value(conf, user, 'export')
+
+    def export_string(self, conf, user):
+        return '\n'.join(self.export_list(conf, user))
+
+    # Sort addresses on domain first and user part second
+    def domain_compare(self, address1, address2):
+        split1, split2 = address1.split('@'), address2.split('@')
+
+        if (split1[1], split1[0]) > (split2[1], split2[0]):
+            return 1
+        elif (split1[1], split1[0]) < (split2[1], split2[0]):
+            return -1
+        else:
+            return 0
+
+    def add_address(self, conf, user, address):
+        self.export_list(conf, user).append(address)
+        self.export_list(conf, user).sort(self.domain_compare)
+        self.sync()
+
+    def remove_address(self, conf, user, address):
+        self.export_list(conf, user).remove(address)
+        self.sync()
+
+    # Set defaults for everything that does not already exist
+    def new_export(self, conf, user, sender):
+        conf_dict = self.database.setdefault(str(conf), {})
+        user_dict = conf_dict.setdefault(str(user), {})
+        user_dict.setdefault('export', [])
+        user_dict.setdefault('sender', sender)
+        for setting in default_settings:
+            user_dict.setdefault(setting, default_settings[setting])
+        self.sync()
+
+    def end_export(self, conf, user):
+        self.delete_value(conf, user, 'export')
+
+    # True if no user exports this conference
+    def not_exported(self, conf):
+        conf_dict = self.database.get(str(conf), {})
+        for user in conf_dict:
+            if conf_dict.get(user).get('export'):
+                return False
+        return True
+
+    # Do consecutive lookups and delete the value for the last one
+    def lookup_and_delete(self, keys):
+        del reduce(lambda x, y: x[y], keys[:-1], self.database)[keys[-1]]
+        self.sync()
+
+    def dump(self):
+        return str(self.database)
+
+
+class Logger:
+    logformat = "%(asctime)s %(message)s"
+
+    def __init__(self, logfile):
+        import logging
+        self.logfile = logfile
+        formatter = logging.Formatter(self.logformat)
+        handler = logging.FileHandler(self.logfile)
+        handler.setFormatter(formatter)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.INFO)
+        self.logger.addHandler(handler)
+
+    def log(self, message):
+        self.logger.info(message)
+
+    def exception(self, message):
+        self.logger.exception(message)
+
+    def fatal(self, message):
+        self.exception(message)
+        sys.stderr.write(message + '\n')
+
+    def tail(self, lines):
+        file = open(self.logfile)
+        lastlines = "".join(file.readlines()[-lines:])
+        file.close()
+        return lastlines
+
+
+# EXPORTING TEXTS
+
+def send_mail(mailfrom, mailto, message):
+    socket.setdefaulttimeout(20)
+
+    server = None
+    try:
+        server = smtplib.SMTP(MAILSERVER)
+        server.sendmail(mailfrom, mailto, message)
+    except:
+        log.exception("Exception when sending mail:")
+    if server:
+        server.close()
+
+
+# Random numbers are not used since it would be necessary to store them in
+# a database for setting In-Reply-To headers correctly later on. A hash of
+# text number, conference and exporting user should guarantee uniqueness.
+def get_msgid(text_no, conf, user):
+    randomness = hash((text_no, conf, user)) % 1e8
+    # text-no.port.exporter.randomness@server
+    return "<%s.%s.%s.%08d@%s>" % (text_no, KOMPORT, SOFTWARE_ID,
+                                   randomness, KOMSERVER)
+
+
+def get_inreplyto(text_no, conf, user):
+    id_list = []
+    for msg in conn.textstats[text_no].misc_info.comment_to_list:
+        id_list.append(get_msgid(msg.text_no, conf, user))
+    return "\n\t".join(id_list)
+
+
+def get_sender(conf, user):
+    try:
+        return db.get_value(conf, user, 'sender')
+    except KeyError:
+        return "%s@%s" % (user, MAILDOMAIN)
+
+
+def get_author(ts):
+    ai_author = kom.first_aux_items_with_tag(ts.aux_items, kom.AI_MX_AUTHOR)
+    if ai_author is None:
+        return conn.conf_name(ts.author)
+    else:
+        return ai_author.data
+
+
+# Extract character set from the content type
+re_charset = re.compile(r'charset="?([^;"]*)"?')
+
+def get_charset(ts):
+    ai_c_t = kom.first_aux_items_with_tag(ts.aux_items, kom.AI_CONTENT_TYPE)
+    try:
+        return re.search(re_charset, ai_c_t.data).group(1)
+    except AttributeError:
+        return DEFAULT_CHARSET
+
+
+def get_header(string, charset):
+    try:
+        return Header(string, charset).encode()
+    except (LookupError, UnicodeError):
+        return Header(string, DEFAULT_CHARSET).encode()
+
+
+def get_body(global_no):
+    return kom.ReqGetText(conn, global_no).response().split('\n', 1)[1]
+
+
+# Find text that is a citation of a previous message
+re_cited = re.compile(r'\n[^\n]*:(\n>.*)+', re.MULTILINE)
+
+def get_cited(global_no, citemode, to_charset):
+    try:
+        assert(citemode != 'none')
+
+        ts = conn.textstats[global_no]
+        # Cite only if the text originated in LysKOM
+        assert(get_author(ts) == conn.conf_name(ts.author))
+        first_commented = ts.misc_info.comment_to_list[0].text_no
+        ts_commented = conn.textstats[first_commented]
+
+        # Get creation date and time, without seconds
+        time = ts_commented.creation_time.to_date_and_time()[:-3]
+        author = get_author(ts_commented)
+        charset = get_charset(ts_commented)
+        body = get_body(first_commented)
+
+        if citemode == 'some': body = re.sub(re_cited, "", body)
+        try:
+            body = body.decode(charset).encode(to_charset)
+        except UnicodeError:
+            pass
+        text = '\n'.join([">" + line for line in body.splitlines()])
+
+        return "\n\n%s (%s):\n%s\n" % (author, time, text)
+    except (AssertionError, IndexError, kom.NoSuchText):
+        return ""
+
+
+def get_mailtext(conf, user, global_no, charset):
+    try:
+        footer = "\n--\n" + db.get_value(conf, user, 'footer')
+        footer = footer.decode('string_escape')
+        footer = footer.replace(r'%c', conn.conf_name(conf))
+        footer = footer.replace(r'%s', get_sender(conf, user))
+    except KeyError:
+        footer = ""
+
+    try:
+        citemode = db.get_value(conf, user, 'citation')
+        citation = get_cited(global_no, citemode, charset)
+    except KeyError:
+        citation = ""
+
+    return get_body(global_no) + citation + footer
+
+
+def export(conf, user, global_no, recipients):
+    ts = conn.textstats[global_no]
+    time = ts.creation_time.to_python_time()
+    charset = get_charset(ts)
+
+    message = Message()
+    message.set_charset(charset)
+
+    encw_author = get_header(get_author(ts), charset)
+    encw_confname = get_header(conn.conf_name(conf), charset)
+
+    inreplyto = get_inreplyto(global_no, conf, user)
+    if inreplyto: message['In-Reply-To'] = inreplyto
+
+    message['Message-Id'] = get_msgid(global_no, conf, user)
+    message['List-Id'] = "%s <%d.%s>" % (encw_confname, conf, KOMSERVER)
+    message['Date'] = formatdate(time, localtime=True)
+    message['Subject'] = get_header(conn.subjects[global_no], charset)
+    message['Sender'] = get_sender(conf, user)
+    message['From'] = "%s <%d@%s>" % (encw_author, conf, MAILDOMAIN)
+
+    message.set_payload(get_mailtext(conf, user, global_no, charset))
+
+    for recipient in recipients:
+        if message['To']:
+            message.replace_header('To', "<%s>" % recipient)
+        else:
+            message.add_header('To', "<%s>" % recipient)
+
+        send_mail(message['Sender'], recipient, message.as_string())
+        log.log("Text %d exported to %s with message id %s" %
+                (global_no, recipient, message['Message-Id']))
+
+
+def export_for_users(conf, local_no, global_no):
+    for user in db.user_list(conf):
+        try:
+            export(conf, user, global_no, db.export_list(conf, user))
+        except KeyError:
+            pass
+    kom.ReqSetLastRead(conn, conf, local_no)
+
+
+def export_text(msg, conn):
+    for recpt in conn.textstats[msg.text_no].misc_info.recipient_list:
+        export_for_users(recpt.recpt, recpt.loc_no, msg.text_no)
+
+
+def export_all_unread():
+    for conf in kom.ReqGetUnreadConfs(conn, KOMPERSON).response():
+        for (local_no, global_no) in conn.get_unread_texts(KOMPERSON, conf):
+            export_for_users(conf, local_no, global_no)
+
+
+# COMMAND HANDLING
+
+def send_message(message, recipient):
+    try:
+        kom.ReqSendMessage(conn, recipient, message)
+    except:
+        log.exception("Exception when sending a message:")
+
+
+def is_member(person, conf):
+    first = 0
+    while True:
+        last = first + 100
+        try:
+            members = kom.ReqGetMembers(conn, conf, first, last).response()
+        except kom.Error:
+            return False
+        if person in [l.member for l in members]:
+            return True
+        first = last
+
+
+def is_supervisor(person, conf):
+    try:
+        supervisor = conn.conferences[int(conf)].supervisor
+    except kom.Error:
+        return False
+    return is_member(person, supervisor)
+
+
+def is_protected(conf):
+    try:
+        return bool(conn.conferences[int(conf)].type.rd_prot)
+    except kom.Error:
+        return False
+
+
+def lookup_name(conf, sender):
+    try:
+        return int(conf)
+    except ValueError:
+        matches = conn.lookup_name(conf.replace('.', ' '),
+                                   want_pers=True, want_confs=True)
+        if len(matches) == 0:
+            send_message(messages['matches_none'], sender)
+            raise LookupError, "Matching failed"
+        elif len(matches) > 1:
+            send_message(messages['matches_several'], sender)
+            raise LookupError, "Matching failed"
+        else:
+            return matches[0][0]
+
+
+def help_cmd(sender, user, *args):
+    send_message(HELP, sender)
+    send_message(HELP_SETTINGS, sender)
+
+
+def add_cmd(sender, user, conf, address):
+    conf = lookup_name(conf, sender)
+    if is_protected(conf) and not is_supervisor(user, conf):
+        send_message(messages['not_supervisor'] % conf, sender)
+        return
+    try:
+        db.add_address(conf, user, address)
+        log.log("%s added to conference %s (%s) by person %d (%s)" %
+                (address, conf, conn.conf_name(int(conf)),
+                 user, conn.conf_name(int(user))))
+        send_message(db.export_string(conf, user), sender)
+    except KeyError:
+        try:
+            if not is_member(KOMPERSON, int(conf)):
+                kom.ReqAddMember(conn, int(conf), KOMPERSON, 100, 0,
+                                 kom.MembershipType()).response()
+                kom.ReqSetUnread(conn, int(conf), 0)
+            db.new_export(conf, user, get_sender(conf, user))
+            add_cmd(sender, user, conf, address)
+        except kom.AccessDenied:
+            send_message(messages['access_denied'] % conf, sender)
+        except kom.UndefinedConference:
+            send_message(messages['no_such_conf'] % conf, sender)
+
+
+def sub_cmd(sender, user, conf, address):
+    conf = lookup_name(conf, sender)
+    try:
+        db.remove_address(conf, user, address)
+        log.log("%s removed from conference %s (%s) by person %d (%s)" %
+                (address, conf, conn.conf_name(int(conf)),
+                 user, conn.conf_name(int(user))))
+        if db.export_list(conf, user) == []:
+            if db.not_exported(conf):
+                kom.ReqSubMember(conn, int(conf), KOMPERSON)
+            db.end_export(conf, user)
+            send_message(messages['no_addresses'], sender)
+        else:
+            send_message(db.export_string(conf, user), sender)
+    except (KeyError, ValueError):
+        send_message(messages['not_exported_to'] % (conf, address), sender)
+
+
+def show_cmd(sender, user, conf, setting=None):
+    conf = lookup_name(conf, sender)
+    if setting == None:
+        # If no setting is specified, show exported addresses
+        try:
+            send_message(db.export_string(conf, user), sender)
+        except KeyError:
+            send_message(messages['not_exporting'] % conf, sender)
+    else:
+        try:
+            translated_setting = translate.get(setting)
+            value = db.get_value(conf, user, translated_setting)
+            # Give the value in the same language as the setting
+            if translated_setting != setting:
+                value = translate.get(value, reverse=True)
+            send_message("%s = %s" % (setting, value), sender)
+        except KeyError:
+            send_message(messages['no_such_setting'], sender)
+
+
+def set_cmd(sender, user, conf, setting, *value):
+    conf = lookup_name(conf, sender)
+    setting, value = translate.get(setting), translate.get(value)
+    try:
+        legal_values = legal_settings[setting]
+    except KeyError:
+        send_message(messages['illegal_setting'], sender)
+        return
+    if legal_values != None and value not in legal_values:
+        send_message(messages['illegal_value'], sender)
+        return
+    if value == ():
+        # If no value is specified, delete the setting
+        try:
+            # The sender address cannot be removed
+            if setting == 'sender':
+                send_message(messages['must_have_sender'], sender)
+                return
+            db.delete_value(conf, user, setting)
+            send_message(messages['ok'], sender)
+        except KeyError:
+            send_message(messages['no_such_setting'] % conf, sender)
+    else:
+        value = ' '.join(value)
+        try:
+            db.set_value(conf, user, setting, value)
+            send_message(messages['ok'], sender)
+        except KeyError:
+            send_message(messages['not_exporting'] % conf, sender)
+
+
+def export_cmd(sender, user, message, address):
+    try:
+        export(user, user, int(message), [address])
+        send_message(messages['ok'], sender)
+    except kom.NoSuchText:
+        send_message(messages['no_such_text'], sender)
+
+
+def admin_cmd(sender, user, *args):
+    assert(sender in ADMINS)
+    try:
+        command, args = args[0], args[1:]
+        try:
+            user = int(command)
+            # Run the arguments as a command given by this user
+            parse_command(sender, user, list(args))
+            return
+        except ValueError:
+            if command == 'clear':
+                # Delete value for the given keys; use with caution!
+                try:
+                    db.lookup_and_delete(args)
+                    send_message(messages['ok'], sender)
+                except Exception, value:
+                    send_message(repr(value), sender)
+                return
+            elif command == 'dump':
+                # Return a raw dump of the database
+                send_message(db.dump(), sender)
+                return
+            elif command == 'tail':
+                # Return the last N (default 10) lines of the log
+                try:
+                    lines = int(args[0])
+                except (IndexError, ValueError):
+                    lines = 10
+                send_message(log.tail(lines).rstrip('\n'), sender)
+                return
+            elif command == 'exit':
+                send_message(messages['exiting'], sender)
+                exit_exporter(0)
+    except (KeyError, IndexError):
+        pass
+    send_message(messages['unknown_admin'], sender)
+
+
+def parse_command(sender, user, message):
+    if message == []:
+        return
+    for command in commands:
+        # Match user input against command words for this command
+        if message[0] in command[1:-1]:
+            try:
+                try:
+                    apply(command[0], [sender, user] + message[1:])
+                # Incorrect command syntax: send syntax string
+                except TypeError:
+                    send_message(command[-1], sender)
+                # Catch name matching exceptions from lookup_name()
+                except LookupError:
+                    pass
+                return
+            # If an assertion failed, move on to the next command
+            except AssertionError:
+                pass
+    send_message(messages['unknown_command'], sender)
+
+
+def parse_message(msg, conn):
+    if msg.recipient != KOMPERSON:
+        return
+    for line in msg.message.splitlines():
+        parse_command(msg.sender, msg.sender, string.split(line))
+
+
+# LANGUAGES AND PARAMETERS
+
+if LANGUAGE == 'en':
+    # Function, command words, syntax string
+    commands = [[help_cmd, '?', 'help', None],
+
+                [add_cmd, '+', 'add',
+                 'Syntax: + <conference> <e-mail address>'],
+
+                [sub_cmd, '-', 'subtract', 'sub',
+                 'Syntax: - <conference> <e-mail address>'],
+
+                [show_cmd, '=', 'show',
+                 'Syntax: = <conference> [<setting>]'],
+
+                [set_cmd, '!', 'set',
+                 'Syntax: ! <conference> <setting> [<value>]'],
+
+                [export_cmd, '>', 'export',
+                 'Syntax: > <text> <e-mail address>'],
+
+                [admin_cmd, 'a', 'admin', 'adm', None]]
+
+    messages = {
+        'ok': "OK.",
+        'exiting': "Exiting...",
+        'no_addresses': "No addresses are exported.",
+        'access_denied': "I'm not allowed to join conference %s.",
+        'illegal_setting': "Illegal setting.",
+        'illegal_value': "Illegal value.",
+        'matches_none': "The name does not match any conference.",
+        'matches_several': "The name matches more than one conference.",
+        'must_have_sender': "The sender address may not be removed.",
+        'no_such_conf': "Conference %s does not exist.",
+        'no_such_setting': "The setting does not exist.",
+        'no_such_text': "The text does not exist.",
+        'not_exporting': "You are not exporting conference %s.",
+        'not_exported_to': "Conference %s is not exported to %s.",
+        'not_supervisor': "You are not supervisor for conference %s.",
+        'unknown_admin': "Unknown admin command.",
+        'unknown_command': "Unknown command.",
+        'footer': "Export of %c.\\nPlease contact %s for more information."
+        }
+
+    translate = translator({})
+
+    HELP = \
+"""No help text is available in English.
+"""
+
+    HELP_SETTINGS = \
+"""No help text is available in English.
+"""
+
+elif LANGUAGE == 'sv':
+    # Function, command words, syntax string
+    commands = [[help_cmd, '?', 'hjälp', 'help', None],
+
+                [add_cmd, '+', 'addera', 'add',
+                 'Syntax: + <möte> <e-postadress>'],
+
+                [sub_cmd, '-', 'subtrahera', 'subtract', 'sub',
+                 'Syntax: - <möte> <e-postadress>'],
+
+                [show_cmd, '=', 'visa', 'show',
+                 'Syntax: = <möte> [<inställning>]'],
+
+                [set_cmd, '!', 'sätt', 'set',
+                 'Syntax: ! <möte> <inställning> [<värde>]'],
+
+                [export_cmd, '>', 'exportera', 'export',
+                 'Syntax: > <inlägg> <e-postadress>'],
+
+                [admin_cmd, 'a', 'admin', 'adm', None]]
+
+    messages = {
+        'ok': "OK.",
+        'exiting': "Avslutar...",
+        'no_addresses': "Inga adresser exporteras.",
+        'access_denied': "Jag kan inte gå med i möte %s.",
+        'illegal_setting': "Ogiltig inställning.",
+        'illegal_value': "Ogiltigt värde.",
+        'matches_none': "Namnet matchar inget möte.",
+        'matches_several': "Namnet matchar mer än ett möte.",
+        'must_have_sender': "Avsändaradressen får inte tas bort.",
+        'no_such_conf': "Möte %s finns inte.",
+        'no_such_setting': "Inställningen finns inte.",
+        'no_such_text': "Inlägget finns inte.",
+        'not_exporting': "Du exporterar inte möte %s.",
+        'not_exported_to': "Möte %s exporteras inte till %s.",
+        'not_supervisor': "Du är inte organisatör för möte %s.",
+        'unknown_admin': "Okänt adminkommando.",
+        'unknown_command': "Okänt kommando.",
+        'footer': "Export av %c.\\nKontakta %s för mer information."
+        }
+
+    translate = translator({
+        'avsändare': 'sender', 'brevfot': 'footer', 'citering': 'citation',
+        'ingen': 'none', 'viss': 'some', 'all': 'all'
+        })
+
+    HELP = \
+"""NOTERA: Eventuella mellanslag i mötesnamn anges istället med punkt.
+
+* Addera mottagare:
+  "addera"/"add"/"+" <möte> <e-postadress>
+
+  Börjar exportera ett möte till den angivna e-postadressen.
+
+* Subtrahera mottagare:
+  "subtrahera"/"subtract"/"sub"/"-" <möte> <e-postadress>
+
+  Slutar exportera mötet till den angivna e-postadressen.
+
+* Visa mottagare/inställning:
+  "visa"/"show"/"=" <möte> [<inställning>]
+
+  Visar de mottagare som mötet just nu exporteras till, eller värdet
+  på en inställning för exporteringen.
+
+* Sätt inställning:
+  "sätt"/"set"/"!" <möte> <inställning> [<värde>]
+
+  Ändrar en inställning för en exportering. Om värde inte anges tas
+  inställningen istället bort (om möjligt).
+
+* Exportera inlägg:
+  "exportera"/"export"/">" <inlägg> <e-postadress>
+
+  Exportera ett specifikt inlägg. Sätter din brevlåda som avsändare i
+  såväl "From" som i kuvertet.
+"""
+
+    HELP_SETTINGS = \
+"""Tillgängliga inställningar:
+
+* "avsändare" ("sender")
+  Kuvertavsändare, d v s vart studsar ska ta vägen. Sätts som
+  skönsvärde till din brevlåda. (För "From" används adressen till
+  mötet som exporteras.)
+
+* "brevfot" ("footer")
+  En eventuell brevfot som läggs till i slutet av exporterade brev.
+  Skönsvärde är "Export av %c.\\nKontakta %s för mer information.".
+
+  I brevfoten byts variabler ut enligt följande:
+
+  %c                  Mötets namn
+  %s                  Avsändaradressen
+ 
+* "citering" ("citation")
+
+  Anger hur kommenterade inlägg ska citeras vid exportering:
+
+  "ingen" ("none")    Citera inte
+  "viss" ("some")     Citera delar av inlägget*
+  "all" ("all")       Citera hela inlägget
+
+  *) Eventuella citeringar i det kommenterade inlägget filtreras
+     bort. Därmed kan långa kommentarskedjor undvikas.
+"""
+
+else:
+    raise LookupError, "Unknown language code!"
+
+
+legal_settings = {
+    'sender': None,
+    'footer': None,
+    'citation': ['none', 'some', 'all']
+    }
+
+default_settings = {
+    'footer': messages['footer'],
+    'citation': 'all'
+    }
+
+
+# MAIN FUNCTIONS
+
+def exit_exporter(status):
+    try:
+        kom.ReqLogout(conn)
+    except (socket.error, NameError):
+        pass
+    db.close()
+    log.log("Exiting...")
+    sys.exit(status)
+
+
+def init_exporter():
+    # Set up signal handling for the exporter
+    def exithandler(signum, frame):
+        exit_exporter(0)
+
+    signal.signal(signal.SIGHUP, exithandler)
+    signal.signal(signal.SIGTERM, exithandler)
+
+    # Connect to the server, login and register client version
+    try:
+        conn = kom.CachedConnection(KOMSERVER, KOMPORT)
+    except:
+        log.fatal("Failed to connect to the LysKOM server!")
+        exit_exporter(1)
+    try:
+        kom.ReqLogin(conn, KOMPERSON, KOMPASSWORD, invisible=1).response()
+    except:
+        log.fatal("Failed to login to the LysKOM server!")
+        exit_exporter(1)
+    kom.ReqSetClientVersion(conn, SOFTWARE_ID, revision)
+
+    # Add handlers for asynchronous messages
+    conn.add_async_handler(kom.ASYNC_SEND_MESSAGE, parse_message)
+    conn.add_async_handler(kom.ASYNC_NEW_TEXT, export_text)
+    conn.add_async_handler(kom.ASYNC_NEW_RECIPIENT, export_text)
+
+    kom.ReqAcceptAsync(conn, [kom.ASYNC_SEND_MESSAGE,
+                              kom.ASYNC_NEW_TEXT,
+                              kom.ASYNC_NEW_RECIPIENT])
+
+    # Make sure we notice if the server silently disappears
+    conn.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+    log.log("Starting...")
+    return conn
+
+
+def mainloop():
+    while True:
+        # From here on the exporter is driven by asynchronous messages
+        try:
+            select.select([conn.socket], [], [])
+            conn.parse_present_data()
+        except (socket.error, kom.ReceiveError):
+            log.fatal("Lost connection to the LysKOM server!")
+            exit_exporter(1)
+        # With python 2.5 and newer "except Exception:" is preferred below
+        except (StandardError, kom.Error):
+            # Any exceptions should have been caught by now; catching one
+            # here means the code is faulty. Log and try to notify admins.
+            emergency_log_and_notify("Root level exception caught!")
+
+
+def emergency_log_and_notify(message):
+    try:
+        # Logging is the most important task. Do it first.
+        log.exception("ERROR: %s" % message)
+
+        for admin in ADMINS:
+            send_message(message, admin)
+    # We're outside the main catch-it-all. Stop for nothing.
+    # (Catching anything here shouldn't be possible.)
+    except:
+        pass
+
+
+if __name__ == '__main__':
+    # Global variables
+    db = ExportDB(DATABASE)
+    log = Logger(LOGFILE)
+    conn = init_exporter()
+
+    export_all_unread()
+    mainloop()

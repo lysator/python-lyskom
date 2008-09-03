@@ -2,11 +2,11 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM export via email
 
-# $Id: komexportmail,v 1.1 2008/08/18 18:08:20 mag Exp $
+# $Id: komexportmail,v 1.2 2008/09/03 18:12:30 mag Exp $
 # (C) 2008 C C Magnus Gustavsson. Released under the GPL.
 
 # Get revision number from the version control system
-vc_revision = "$Revision: 1.1 $"
+vc_revision = "$Revision: 1.2 $"
 revision = vc_revision[11:-2]
 
 from komexportmail_config import *
@@ -461,6 +461,7 @@ def show_cmd(sender, user, conf, setting=None):
 
 
 def set_cmd(sender, user, conf, setting, *value):
+    value = ' '.join(value)
     conf = lookup_name(conf, sender)
     setting, value = translate.get(setting), translate.get(value)
     try:
@@ -471,7 +472,7 @@ def set_cmd(sender, user, conf, setting, *value):
     if legal_values != None and value not in legal_values:
         send_message(messages['illegal_value'], sender)
         return
-    if value == ():
+    if value == "":
         # If no value is specified, delete the setting
         try:
             # The sender address cannot be removed
@@ -483,7 +484,6 @@ def set_cmd(sender, user, conf, setting, *value):
         except KeyError:
             send_message(messages['no_such_setting'] % conf, sender)
     else:
-        value = ' '.join(value)
         try:
             db.set_value(conf, user, setting, value)
             send_message(messages['ok'], sender)
@@ -556,7 +556,7 @@ def parse_command(sender, user, message):
             # If an assertion failed, move on to the next command
             except AssertionError:
                 pass
-    send_message(messages['unknown_command'], sender)
+    send_message(messages['unknown_command'] % message[0], sender)
 
 
 def parse_message(msg, conn):
@@ -606,7 +606,7 @@ if LANGUAGE == 'en':
         'not_exported_to': "Conference %s is not exported to %s.",
         'not_supervisor': "You are not supervisor for conference %s.",
         'unknown_admin': "Unknown admin command.",
-        'unknown_command': "Unknown command.",
+        'unknown_command': "Unknown command: %s",
         'footer': "Export of %c.\\nPlease contact %s for more information."
         }
 
@@ -658,7 +658,7 @@ elif LANGUAGE == 'sv':
         'not_exported_to': "Möte %s exporteras inte till %s.",
         'not_supervisor': "Du är inte organisatör för möte %s.",
         'unknown_admin': "Okänt adminkommando.",
-        'unknown_command': "Okänt kommando.",
+        'unknown_command': "Okänt kommando: %s",
         'footer': "Export av %c.\\nKontakta %s för mer information."
         }
 

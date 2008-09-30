@@ -1,6 +1,7 @@
+# -*- coding: iso-8859-1 -*-
 # Tabulator and Histogram classes refactored out from the
 # python-lyskom program komconfstats.
-# $Id: tabulator.py,v 1.5 2002/08/01 16:40:03 kent Exp $
+# $Id: tabulator.py,v 1.6 2008/09/30 21:21:34 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 

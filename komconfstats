@@ -1,6 +1,7 @@
 #!/usr/bin/python
+# -*- coding: iso-8859-1 -*-
 # Collect some [1] statistics about a conference
-# $Id: komconfstats,v 1.19 2004/12/28 15:22:37 kent Exp $
+# $Id: komconfstats,v 1.20 2008/09/30 21:21:57 kent Exp $
 # (C) 2000-2002 Kent Engström. Released under GPL.
 #
 # SAKER ATT FIXA:
@@ -30,13 +31,12 @@ import getopt
 import string
 import re
 import time
-import whrandom
 
 import jddate # From the lyspython collection
 import tabulator
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.19 $"
+vc_revision = "$Revision: 1.20 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting
@@ -109,7 +109,7 @@ class EvenNumberTabulator(tabulator.Tabulator):
 
 class WordTabulator(tabulator.Tabulator):
     def report_extra_header(self, l):
-        r = whrandom.choice(self.dict.keys())
+        r = random.choice(self.dict.keys())
         l.append("Denna rapports slumpmässigt valda ord är:")
         l.append('    "%s", använt %s' % (r,
                                           tabulator.get_count_with_noun(self.dict[r].count,

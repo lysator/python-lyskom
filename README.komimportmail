@@ -1,4 +1,4 @@
-[Typos fixed 2008-09-30 / Kent]
+[Typos and spurious newline fixed 2008-09-30 / Kent]
 7984531 2002-02-12 10:15 /145 rader/ Zoran (Errare humanum est)
 ...
 Ärende: Mailimport till LysKOM
@@ -118,8 +118,7 @@ transport_maps = dbm:/etc/postfix/transport
 /etc/postfix/master.cf should contain following entry
 
 komqueue unix   -       n       n       -       -       pipe
-        flags=R user=komimporter
-argv=/usr/local/Komimport/bin/komimportmail $sender $user
+        flags=R user=komimporter argv=/usr/local/Komimport/bin/komimportmail $sender $user
 
 
 /etc/postfix/transport should contain following entry

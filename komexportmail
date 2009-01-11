@@ -2,11 +2,11 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM export via email
 
-# $Id: komexportmail,v 1.3 2009/01/04 18:06:13 mag Exp $
+# $Id: komexportmail,v 1.4 2009/01/11 18:02:21 mag Exp $
 # (C) 2008-2009 C C Magnus Gustavsson. Released under the GPL.
 
 # Get revision number from the version control system
-vc_revision = "$Revision: 1.3 $"
+vc_revision = "$Revision: 1.4 $"
 revision = vc_revision[11:-2]
 
 from komexportmail_config import *
@@ -183,14 +183,40 @@ def send_mail(mailfrom, mailto, message):
         server.close()
 
 
+def aux_item(text, tag):
+    if type(text) == int:
+        text = conn.textstats[text]
+    return kom.first_aux_items_with_tag(text.aux_items, tag)
+
+
+def is_native(global_no):
+    return (aux_item(global_no, kom.AI_MX_FROM) == None)
+
+
+def is_exportable(global_no, conf, user):
+    try:
+        db.get_value(conf, user, 'filter')
+    except KeyError:
+        return True
+    return is_native(global_no)
+
+
 # Random numbers are not used since it would be necessary to store them in
 # a database for setting In-Reply-To headers correctly later on. A hash of
 # text number, conference and exporting user should guarantee uniqueness.
-def get_msgid(global_no, conf, user):
+def create_msgid(global_no, conf, user):
     randomness = hash((global_no, conf, user)) % 1e8
     # text-no.port.exporter.randomness@server
     return "<%s.%s.%s.%08d@%s>" % (global_no, KOMPORT, SOFTWARE_ID,
                                    randomness, KOMSERVER)
+
+
+def get_msgid(global_no, conf, user):
+    ai_msgid = aux_item(global_no, kom.AI_MX_MESSAGE_ID)
+    if ai_msgid == None or is_exportable(global_no, conf, user):
+        return create_msgid(global_no, conf, user)
+    else:
+        return ai_msgid.data
 
 
 def get_inreplyto(global_no, conf, user):
@@ -208,8 +234,8 @@ def get_sender(conf, user):
 
 
 def get_author(ts):
-    ai_author = kom.first_aux_items_with_tag(ts.aux_items, kom.AI_MX_AUTHOR)
-    if ai_author is None:
+    ai_author = aux_item(ts, kom.AI_MX_AUTHOR)
+    if ai_author == None:
         return conn.conf_name(ts.author)
     else:
         return ai_author.data
@@ -219,7 +245,7 @@ def get_author(ts):
 re_charset = re.compile(r'charset="?([^;"]*)"?')
 
 def get_charset(ts):
-    ai_c_t = kom.first_aux_items_with_tag(ts.aux_items, kom.AI_CONTENT_TYPE)
+    ai_c_t = aux_item(ts, kom.AI_CONTENT_TYPE)
     try:
         return Charset(re.search(re_charset, ai_c_t.data).group(1))
     except AttributeError:
@@ -242,11 +268,9 @@ re_cited = re.compile(r'\n[^\n]*:(\n>.*)+', re.MULTILINE)
 
 def get_cited(global_no, citemode, to_charset):
     try:
-        assert(citemode != 'none')
+        assert(is_native(global_no) and citemode != 'none')
 
         ts = conn.textstats[global_no]
-        # Cite only if the text originated in LysKOM
-        assert(get_author(ts) == conn.conf_name(ts.author))
         first_commented = ts.misc_info.comment_to_list[0].text_no
         ts_commented = conn.textstats[first_commented]
 
@@ -299,7 +323,7 @@ def export(conf, user, global_no, recipients):
     inreplyto = get_inreplyto(global_no, conf, user)
     if inreplyto: message['In-Reply-To'] = inreplyto
 
-    message['Message-Id'] = get_msgid(global_no, conf, user)
+    message['Message-Id'] = create_msgid(global_no, conf, user)
     message['List-Id'] = "%s <%d.%s>" % (encw_confname, conf, KOMSERVER)
     message['Date'] = formatdate(time, localtime=True)
     message['Subject'] = get_header(conn.subjects[global_no], charset)
@@ -325,10 +349,11 @@ def export(conf, user, global_no, recipients):
 
 def export_for_users(conf, local_no, global_no):
     for user in db.user_list(conf):
-        try:
-            export(conf, user, global_no, db.export_list(conf, user))
-        except KeyError:
-            pass
+        if is_exportable(global_no, conf, user):
+            try:
+                export(conf, user, global_no, db.export_list(conf, user))
+            except KeyError:
+                pass
     kom.ReqSetLastRead(conn, conf, local_no)
 
 
@@ -417,7 +442,6 @@ def add_cmd(sender, user, conf, address):
             if not is_member(KOMPERSON, int(conf)):
                 kom.ReqAddMember(conn, int(conf), KOMPERSON, 100, 0,
                                  kom.MembershipType()).response()
-                kom.ReqSetUnread(conn, int(conf), 0)
             db.new_export(conf, user, get_sender(conf, user))
             add_cmd(sender, user, conf, address)
         except kom.AccessDenied:
@@ -570,6 +594,12 @@ def parse_message(msg, conn):
         parse_command(msg.sender, msg.sender, string.split(line))
 
 
+def set_no_unread(msg, conn):
+    if msg.person_no != KOMPERSON:
+        return
+    kom.ReqSetUnread(conn, msg.conf_no, 0)
+
+
 # LANGUAGES AND PARAMETERS
 
 if LANGUAGE == 'en':
@@ -668,7 +698,7 @@ elif LANGUAGE == 'sv':
 
     translate = translator({
         'avsändare': 'sender', 'brevfot': 'footer', 'citering': 'citation',
-        'ingen': 'none', 'viss': 'some', 'all': 'all'
+        'filter': 'filter', 'ingen': 'none', 'viss': 'some', 'all': 'all'
         })
 
     HELP = \
@@ -719,17 +749,20 @@ elif LANGUAGE == 'sv':
 
   %c                  Mötets namn
   %s                  Avsändaradressen
- 
-* "citering" ("citation")
 
+* "citering" ("citation")
   Anger hur kommenterade inlägg ska citeras vid exportering:
 
   "ingen" ("none")    Citera inte
   "viss" ("some")     Citera delar av inlägget*
   "all" ("all")       Citera hela inlägget
 
-  *) Eventuella citeringar i det kommenterade inlägget filtreras
-     bort. Därmed kan långa kommentarskedjor undvikas.
+  *) Tidigare citeringar i det kommenterade inlägget filtreras bort.
+     Därmed kan långa kommentarskedjor undvikas.
+
+* "filter" ("filter")
+  En eventuell regel för filtrering av inlägg. Om värdet är "import"
+  kommer importerad e-post inte att återexporteras.
 """
 
 else:
@@ -739,7 +772,8 @@ else:
 legal_settings = {
     'sender': None,
     'footer': None,
-    'citation': ['none', 'some', 'all']
+    'citation': ['none', 'some', 'all'],
+    'filter': ['', 'import']
     }
 
 default_settings = {
@@ -785,10 +819,12 @@ def init_exporter():
     conn.add_async_handler(kom.ASYNC_SEND_MESSAGE, parse_message)
     conn.add_async_handler(kom.ASYNC_NEW_TEXT, export_text)
     conn.add_async_handler(kom.ASYNC_NEW_RECIPIENT, export_text)
+    conn.add_async_handler(kom.ASYNC_NEW_MEMBERSHIP, set_no_unread)
 
     kom.ReqAcceptAsync(conn, [kom.ASYNC_SEND_MESSAGE,
                               kom.ASYNC_NEW_TEXT,
-                              kom.ASYNC_NEW_RECIPIENT])
+                              kom.ASYNC_NEW_RECIPIENT,
+                              kom.ASYNC_NEW_MEMBERSHIP])
 
     # Make sure we notice if the server silently disappears
     conn.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)

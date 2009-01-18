@@ -2,11 +2,11 @@
 # -*- python -*- -*- coding: iso-8859-1 -*-
 # LysKOM export via email
 
-# $Id: komexportmail,v 1.4 2009/01/11 18:02:21 mag Exp $
+# $Id: komexportmail,v 1.5 2009/01/18 18:18:05 mag Exp $
 # (C) 2008-2009 C C Magnus Gustavsson. Released under the GPL.
 
 # Get revision number from the version control system
-vc_revision = "$Revision: 1.4 $"
+vc_revision = "$Revision: 1.5 $"
 revision = vc_revision[11:-2]
 
 from komexportmail_config import *
@@ -201,6 +201,13 @@ def is_exportable(global_no, conf, user):
     return is_native(global_no)
 
 
+def try_recode(string, old=DEFAULT_CHARSET, new=DEFAULT_CHARSET):
+    try:
+        return string.decode(str(old)).encode(str(new))
+    except UnicodeError:
+        return string
+
+
 # Random numbers are not used since it would be necessary to store them in
 # a database for setting In-Reply-To headers correctly later on. A hash of
 # text number, conference and exporting user should guarantee uniqueness.
@@ -268,7 +275,7 @@ re_cited = re.compile(r'\n[^\n]*:(\n>.*)+', re.MULTILINE)
 
 def get_cited(global_no, citemode, to_charset):
     try:
-        assert(is_native(global_no) and citemode != 'none')
+        assert is_native(global_no) and citemode != 'none'
 
         ts = conn.textstats[global_no]
         first_commented = ts.misc_info.comment_to_list[0].text_no
@@ -281,10 +288,7 @@ def get_cited(global_no, citemode, to_charset):
         body = get_body(first_commented)
 
         if citemode == 'some': body = re.sub(re_cited, "", body)
-        try:
-            body = body.decode(str(charset)).encode(str(to_charset))
-        except UnicodeError:
-            pass
+        body = try_recode(body, charset, to_charset)
         text = '\n'.join([">" + line for line in body.splitlines()])
 
         return "\n\n%s (%s):\n%s\n" % (author, time, text)
@@ -298,6 +302,7 @@ def get_mailtext(conf, user, global_no, charset):
         footer = footer.decode('string_escape')
         footer = footer.replace(r'%c', conn.conf_name(conf))
         footer = footer.replace(r'%s', get_sender(conf, user))
+        footer = try_recode(footer, new=charset)
     except KeyError:
         footer = ""
 
@@ -528,7 +533,7 @@ def export_cmd(sender, user, message, address):
 
 
 def admin_cmd(sender, user, *args):
-    assert(sender in ADMINS)
+    assert sender in ADMINS
     try:
         command, args = args[0], args[1:]
         try:

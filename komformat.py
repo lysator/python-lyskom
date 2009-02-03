@@ -1,5 +1,6 @@
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komformat.py,v 1.2 2001/08/29 13:08:51 kent Exp $
+# $Id: komformat.py,v 1.3 2009/02/03 07:22:15 forsberg Exp $
+# -*- coding: iso-8859-1 -*-
 # (C) 1999 Kent Engström. Released under GPL.
 
 # Format a text for display.

@@ -1,6 +1,7 @@
 #!/usr/bin/python
+# -*- coding: iso-8859-1 -*-
 # LysKOM Protocol A version 10 client interface for Python
-# $Id: komwalk.py,v 1.1 1999/10/15 08:51:54 kent Exp $
+# $Id: komwalk.py,v 1.2 2009/02/03 07:22:14 forsberg Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom

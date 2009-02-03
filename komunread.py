@@ -1,6 +1,7 @@
 #!/usr/bin/python
+# -*- coding: iso-8859-1 -*-
 # Show some information around unread letters (or articles)
-# $Id: komunread.py,v 1.2 2001/01/02 09:37:28 kent Exp $
+# $Id: komunread.py,v 1.3 2009/02/03 07:22:14 forsberg Exp $
 # (C) 1999 Kent Engström. Released under GPL.
 
 import kom
@@ -10,7 +11,7 @@ import getopt
 import string
 
 # Get revision number from RCS/CVS
-vc_revision = "$Revision: 1.2 $"
+vc_revision = "$Revision: 1.3 $"
 revision = vc_revision[11:-2]
 
 # Error/sucess reporting

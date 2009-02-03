@@ -1,6 +1,7 @@
 #!/usr/bin/env python
+# -*- coding: iso-8859-1 -*-
 # Get highest text numbers. Deprecated. Use komserverstats instead.
-# $Id: komlasttext,v 1.3 2003/09/02 18:20:13 kent Exp $
+# $Id: komlasttext,v 1.4 2009/02/03 07:22:15 forsberg Exp $
 # (C) 2002 Kent Engström. Released under GPL.
 
 import kom
